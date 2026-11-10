@@ -186,6 +186,8 @@ def twse_inst_total(ymd):
     out = {k: {"buy": 0, "sell": 0, "net": 0} for k in ("foreign", "trust", "dealer", "total")}
     for row in tbl[0]["data"]:
         name = str(row[0]).strip()
+        if name.startswith("外資自營商"):
+            continue  # 官方說明：外資自營商已計入自營商，不納入合計
         if name.startswith("外資"):
             k = "foreign"
         elif name.startswith("投信"):
@@ -223,7 +225,8 @@ def twse_inst_by_stock(ymd):
     out = {}
     for row in tbl[0]["data"]:
         code = str(row[ic]).strip()
-        foreign = (num(row[i_for]) or 0) + ((num(row[i_fdl]) or 0) if i_fdl is not None else 0)
+        foreign = num(row[i_for]) or 0  # 不含外資自營商，與官方三大法人合計口徑一致
+        _ = i_fdl
         trust = num(row[i_tr]) or 0
         if i_dl is not None:
             dealer = num(row[i_dl]) or 0
