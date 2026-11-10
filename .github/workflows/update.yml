@@ -1,0 +1,63 @@
+name: 每日更新台股籌碼
+
+on:
+  schedule:
+    # 台北時間平日 21:47 抓一次（融資融券約 21:00 後公布），23:17 再補抓一次
+    - cron: "47 13 * * 1-5"
+    - cron: "17 15 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "回補最近幾個平日（第一次建議 60）"
+        default: "1"
+  push:
+    branches: [main]
+    paths: ["web/**", "scripts/build.py"]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: tw-chips
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: 抓資料
+        if: github.event_name != 'push'
+        run: python scripts/fetch.py --days "${{ github.event.inputs.days || '3' }}"
+
+      - name: 存回 repo
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "data: $(TZ=Asia/Taipei date +%F)"
+          git push
+
+      - name: 建置網站
+        run: python scripts/build.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

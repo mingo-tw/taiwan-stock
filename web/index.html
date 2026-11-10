@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>台股籌碼追蹤</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>台股籌碼追蹤</h1>
+    <span id="asof" class="muted"></span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <a href="#overview" data-tab="overview">總覽</a>
+    <a href="#inst" data-tab="inst">三大法人</a>
+    <a href="#margin" data-tab="margin">融資融券</a>
+    <a href="#stock" data-tab="stock">個股查詢</a>
+    <a href="#rank" data-tab="rank">排行</a>
+  </nav>
+</header>
+
+<main>
+  <!-- 總覽 -->
+  <section id="v-overview" class="view">
+    <div class="tiles" id="ov-tiles"></div>
+    <div class="card">
+      <div class="card-h"><h2>加權指數</h2><div class="seg" data-range="ov"></div></div>
+      <div class="chart" id="ov-taiex"></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>三大法人合計買賣超（億元）</h2></div>
+      <div class="chart short" id="ov-inst"></div>
+    </div>
+  </section>
+
+  <!-- 三大法人 -->
+  <section id="v-inst" class="view">
+    <div class="tiles" id="in-tiles"></div>
+    <div class="card-h outside"><h2>每日買賣超（億元）</h2><div class="seg" data-range="in"></div></div>
+    <div class="grid3">
+      <div class="card"><h3>外資</h3><div class="chart short" id="in-foreign"></div></div>
+      <div class="card"><h3>投信</h3><div class="chart short" id="in-trust"></div></div>
+      <div class="card"><h3>自營商</h3><div class="chart short" id="in-dealer"></div></div>
+    </div>
+    <div class="card">
+      <h2>明細（億元）</h2>
+      <div class="table-wrap"><table id="in-table"></table></div>
+    </div>
+  </section>
+
+  <!-- 融資融券 -->
+  <section id="v-margin" class="view">
+    <div class="tiles" id="mg-tiles"></div>
+    <div class="card-h outside"><h2>趨勢</h2><div class="seg" data-range="mg"></div></div>
+    <div class="grid3">
+      <div class="card"><h3>融資餘額（億元）</h3><div class="chart short" id="mg-fin"></div></div>
+      <div class="card"><h3>融券餘額（張）</h3><div class="chart short" id="mg-short"></div></div>
+      <div class="card"><h3>券資比（%）</h3><div class="chart short" id="mg-ratio"></div></div>
+    </div>
+    <div class="card">
+      <h2>明細</h2>
+      <div class="table-wrap"><table id="mg-table"></table></div>
+      <p class="note">券資比 = 融券餘額 ÷ 融資餘額（以張數計）。上市市場統計。</p>
+    </div>
+  </section>
+
+  <!-- 個股 -->
+  <section id="v-stock" class="view">
+    <form class="search" id="search">
+      <input id="q" list="codes" inputmode="search" autocomplete="off"
+             placeholder="輸入代號或名稱，例如 2330、台積電">
+      <datalist id="codes"></datalist>
+      <button type="submit">查詢</button>
+    </form>
+    <div class="chips" id="watch"></div>
+    <div id="st-empty" class="empty">輸入股票代號開始查詢。</div>
+    <div id="st-body" hidden>
+      <div class="st-head">
+        <div>
+          <div class="st-name"><span id="st-name"></span> <span id="st-code" class="muted"></span>
+            <span id="st-mkt" class="tag"></span></div>
+          <div class="st-price"><span id="st-close"></span> <span id="st-chg"></span></div>
+          <div class="muted small" id="st-date"></div>
+        </div>
+        <button id="st-star" class="star" type="button" aria-label="加入自選">☆ 自選</button>
+      </div>
+      <div class="tiles" id="st-tiles"></div>
+      <div class="card-h outside"><h2>走勢</h2><div class="seg" data-range="st"></div></div>
+      <div class="grid3">
+        <div class="card"><h3>收盤價</h3><div class="chart short" id="st-price-c"></div></div>
+        <div class="card"><h3>三大法人買賣超（張）</h3><div class="chart short" id="st-inst-c"></div></div>
+        <div class="card"><h3>融資餘額（張）</h3><div class="chart short" id="st-fin-c"></div></div>
+      </div>
+      <div class="card">
+        <h2>每日明細</h2>
+        <div class="table-wrap"><table id="st-table"></table></div>
+        <p class="note">法人與融資券單位為「張」。估算資金流 = 三大法人買賣超股數 × 當日收盤價，為概估值。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 排行 -->
+  <section id="v-rank" class="view">
+    <div class="card-h outside">
+      <h2 id="rk-title">排行</h2>
+      <select id="rk-sel">
+        <option value="inst_buy">三大法人買超（金額）</option>
+        <option value="inst_sell">三大法人賣超（金額）</option>
+        <option value="for_buy">外資買超</option>
+        <option value="for_sell">外資賣超</option>
+        <option value="tru_buy">投信買超</option>
+        <option value="tru_sell">投信賣超</option>
+        <option value="fin_up">融資增加</option>
+        <option value="fin_down">融資減少</option>
+        <option value="ratio">券資比最高</option>
+      </select>
+    </div>
+    <div class="card"><div class="table-wrap"><table id="rk-table" class="clickable"></table></div>
+      <p class="note">金額為估算（買賣超股數 × 收盤價）。點一列可查看個股。券資比僅列融資餘額 ≥ 1,000 張的股票。</p>
+    </div>
+  </section>
+</main>
+
+<div id="tip" class="tip" hidden></div>
+<footer class="muted small">資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日晚間自動更新。僅供參考，非投資建議。</footer>
+<script src="app.js"></script>
+</body>
+</html>
