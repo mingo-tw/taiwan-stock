@@ -269,6 +269,24 @@ def twse_margin(ymd):
     return {"summary": summary, "stocks": stocks}
 
 
+def twse_pe(ymd):
+    """BWIBBU_d：個股本益比、股價淨值比、殖利率 → {code: [本益比, 淨值比, 殖利率%]}"""
+    r = get_json(f"{TWSE}/afterTrading/BWIBBU_d",
+                 {"date": ymd, "selectType": "ALL", "response": "json"})
+    if not ok(r):
+        return None
+    tbl = tables_of(r)
+    if not tbl:
+        return None
+    f = [str(x).strip() for x in tbl[0]["fields"]]
+    ic, ipe, ipb, iy = idx(f, "證券代號"), idx(f, "本益比"), idx(f, "股價淨值比"), \
+        idx(f, "殖利率(%)", lambda x: x.startswith("殖利率"))
+    out = {}
+    for row in tbl[0]["data"]:
+        out[str(row[ic]).strip()] = [num(row[ipe]), num(row[ipb]), num(row[iy])]
+    return out
+
+
 # ---------- 上櫃 TPEx（盡力而為） ----------
 
 def _pick(d, *pats):
@@ -350,6 +368,19 @@ def tpex_latest(ymd):
             log(f"  TPEx 融資券 日期不符或格式不同，keys={list(mg[0].keys())[:12]}")
     except Exception as e:  # noqa: BLE001
         log("  TPEx 融資券 失敗", e)
+    try:
+        pe = get_json(f"{TPEX_OPENAPI}/tpex_mainboard_peratio_analysis") or []
+        if pe and _roc_to_ymd(_pick(pe[0], r"^Date$", "日期")) == ymd:
+            for d in pe:
+                code = str(_pick(d, r"SecuritiesCompanyCode", r"^Code$", "代號") or "").strip()
+                if code in out:
+                    out[code]["pe"] = [num(_pick(d, r"PriceEarningRatio", "本益比")),
+                                       num(_pick(d, r"PriceBookRatio", "淨值比")),
+                                       num(_pick(d, r"YieldRatio", "殖利率"))]
+        elif pe:
+            log(f"  TPEx 本益比 日期不符或格式不同，keys={list(pe[0].keys())[:8]}")
+    except Exception as e:  # noqa: BLE001
+        log("  TPEx 本益比 失敗", e)
     return out
 
 
@@ -372,6 +403,7 @@ def fetch_day(ymd, with_tpex):
     inst = twse_inst_total(ymd)
     by = twse_inst_by_stock(ymd) or {}
     mg = twse_margin(ymd)
+    pe = twse_pe(ymd)
 
     stocks = {}
     for code, q in iq["quotes"].items():
@@ -396,6 +428,7 @@ def fetch_day(ymd, with_tpex):
         "market": iq["market"],
         "inst": inst,
         "margin": mg and mg["summary"],
+        "pe": pe or {},
         "stocks": stocks,
     }
 
@@ -427,7 +460,16 @@ def main():
     got = 0
     for ymd in sorted(days):
         path = RAW / f"{ymd}.json"
-        if ymd in closed or complete(path):
+        if ymd in closed:
+            continue
+        if complete(path):
+            d0 = json.loads(path.read_text("utf-8"))
+            if not d0.get("pe"):
+                pe = twse_pe(ymd)
+                if pe:
+                    d0["pe"] = {**pe, **{k: v for k, v in (d0.get("pe") or {}).items()}}
+                    path.write_text(json.dumps(d0, ensure_ascii=False, separators=(",", ":")), "utf-8")
+                    log(f"[{ymd}] 補上本益比 {len(pe)} 檔")
             continue
         day = fetch_day(ymd, with_tpex=False)
         if day is None:
@@ -441,6 +483,8 @@ def main():
                 for code, row in old.get("stocks", {}).items():
                     if row[1] == "otc" and code not in day["stocks"]:
                         day["stocks"][code] = row
+                        if code in (old.get("pe") or {}):
+                            day["pe"][code] = old["pe"][code]
             except Exception:  # noqa: BLE001
                 pass
         path.write_text(json.dumps(day, ensure_ascii=False, separators=(",", ":")), "utf-8")
@@ -458,7 +502,8 @@ def main():
             otc_rows = {c: r for c, r in day.get("stocks", {}).items() if r[1] == "otc"}
             has_inst = any(r[8] is not None for r in otc_rows.values())
             has_margin = any(r[9] is not None for r in otc_rows.values())
-            if not (otc_rows and has_inst and has_margin):
+            has_pe = any(c in (day.get("pe") or {}) for c in otc_rows)
+            if not (otc_rows and has_inst and has_margin and has_pe):
                 ymd = path.stem
                 log(f"[{ymd}] 補抓上櫃…")
                 otc = tpex_latest(ymd)
@@ -474,6 +519,8 @@ def main():
                     if old and old[1] == "otc":  # 這次沒抓到的欄位沿用舊值
                         new = [n if n is not None else o for n, o in zip(new, old)]
                     day["stocks"][code] = new
+                    if q.get("pe"):
+                        day.setdefault("pe", {})[code] = q["pe"]
                 path.write_text(json.dumps(day, ensure_ascii=False, separators=(",", ":")), "utf-8")
                 n_i = sum(1 for q in otc.values() if q.get("inst"))
                 n_m = sum(1 for q in otc.values() if q.get("margin"))

@@ -67,6 +67,41 @@ def main():
         })
     dump(data / "market.json", {"updated": days[-1].get("fetched_at"), "days": mrows})
 
+    official = {f"{f.stem[:4]}-{f.stem[4:]}" for f in (ROOT / "data" / "pe_monthly").glob("*.json")}
+    # ---- 本益比：月資料（官方月底）＋ 每日快照補缺 ----
+    monthly = {}  # "YYYY-MM" -> {code: pe}
+    for f in sorted((ROOT / "data" / "pe_monthly").glob("*.json")):
+        try:
+            monthly[f"{f.stem[:4]}-{f.stem[4:]}"] = json.loads(f.read_text("utf-8")).get("pe", {})
+        except Exception:  # noqa: BLE001
+            pass
+    for d in days:  # 快照依日期排序，後面的覆蓋前面 → 每月最後一天
+        ym = d["date"][:7]
+        for code, v in (d.get("pe") or {}).items():
+            if v and v[0]:
+                monthly.setdefault(ym, {})
+                if ym not in official:
+                    monthly[ym][code] = v[0]
+    months = sorted(monthly)[-37:]
+    cur_month = days[-1]["date"][:7]
+    latest_pe = days[-1].get("pe") or {}
+    try:
+        est = json.loads((ROOT / "data" / "estimates.json").read_text("utf-8"))
+    except Exception:  # noqa: BLE001
+        est = {"items": {}}
+
+    def valuation(code):
+        hist = [[ym, monthly[ym][code]] for ym in months if monthly[ym].get(code)]
+        past = [v for ym, v in hist if ym != cur_month][-36:]
+        v = latest_pe.get(code) or [None, None, None]
+        out = {"pe": v[0], "pb": v[1], "yld": v[2], "hist": hist[-37:], "n": len(past)}
+        if past:
+            out.update(avg=round(sum(past) / len(past), 2), min=min(past), max=max(past))
+        e = est.get("items", {}).get(code)
+        if e:
+            out["est"] = e
+        return out
+
     # ---- 個股歷史 ----
     hist, names = {}, {}
     for d in days[-KEEP_DAYS_STOCK:]:
@@ -80,7 +115,7 @@ def main():
         if not code.isalnum():
             continue
         dump(data / "s" / f"{code}.json",
-             {"c": code, "n": names[code][0], "m": names[code][1], "rows": rows})
+             {"c": code, "n": names[code][0], "m": names[code][1], "rows": rows, "v": valuation(code)})
     dump(data / "stocks.json", sorted([[c, n, m] for c, (n, m) in names.items() if c.isalnum()]))
 
     # ---- 最新一日排行 ----

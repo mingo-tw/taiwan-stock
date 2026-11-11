@@ -52,6 +52,8 @@ def day_data(ymd):
         margin.append([code, name, "1", "1", "0", c(fp), c(fin_bal[code]), "999", "1", "1", "0", c(sp), c(sho_bal[code]), "999", "0", ""])
     fp, sp, ap = mkt["fin"], mkt["short"], mkt["amt"]
     mkt["fin"] += random.randint(-40000, 40000); mkt["short"] += random.randint(-8000, 8000); mkt["amt"] += random.randint(-3_000_000, 3_000_000)
+    bw = [[code, name, c(price[code], 2), "2.10", 114, c(price[code] / (price[code] / 20 + 5), 2) if code != "1105" else "-", "3.20", "115/2"]
+          for code, name, _ in STOCKS]
     fi, tr, de = random.gauss(0, 1.5e10), random.gauss(0, 3e9), random.gauss(0, 2e9)
     cache[ymd] = {
         "MI_INDEX": {"stat": "OK", "date": ymd, "tables": [
@@ -66,6 +68,7 @@ def day_data(ymd):
             ["自營商(自行買賣)", "1", "1", c(de * 0.4)], ["自營商(避險)", "1", "1", c(de * 0.6)], ["投信", "1", "1", c(tr)],
             ["外資及陸資(不含外資自營商)", "1", "1", c(fi)], ["外資自營商", "0", "0", "0"], ["合計", "1", "1", c(fi + tr + de)]]}]},
         "T86": {"stat": "OK", "tables": [{"fields": ["證券代號", "證券名稱", "外陸資買進股數(不含外資自營商)", "外陸資賣出股數(不含外資自營商)", "外陸資買賣超股數(不含外資自營商)", "外資自營商買進股數", "外資自營商賣出股數", "外資自營商買賣超股數", "投信買進股數", "投信賣出股數", "投信買賣超股數", "自營商買賣超股數", "自營商買進股數(自行買賣)", "自營商賣出股數(自行買賣)", "自營商買賣超股數(自行買賣)", "自營商買進股數(避險)", "自營商賣出股數(避險)", "自營商買賣超股數(避險)", "三大法人買賣超股數"], "data": t86}]},
+        "BWIBBU_d": {"stat": "OK", "fields": ["證券代號", "證券名稱", "收盤價", "殖利率(%)", "股利年度", "本益比", "股價淨值比", "財報年/季"], "data": bw},
         "MI_MARGN": {"stat": "OK", "tables": [
             {"title": "信用交易統計", "fields": ["項目", "買進", "賣出", "現金(券)償還", "前日餘額", "今日餘額"], "data": [
                 ["融資(交易單位)", "1", "1", "1", c(fp), c(mkt["fin"])], ["融券(交易單位)", "1", "1", "1", c(sp), c(mkt["short"])],
@@ -92,6 +95,8 @@ def fake_get_json(url, params=None, tries=3):
         if url.endswith("margin_balance"):
             return [{"Date": roc(today), "SecuritiesCompanyCode": cd, "MarginPurchaseBalance": "5000", "MarginPurchaseBalancePreviousDay": "4800",
                      "ShortSaleBalance": "300", "ShortSaleBalancePreviousDay": "320"} for cd, _, _ in OTC]
+        if url.endswith("peratio_analysis"):
+            return [{"Date": roc(today), "SecuritiesCompanyCode": cd, "CompanyName": n, "PriceEarningRatio": "18.5", "DividendPerShare": "5", "YieldRatio": "1.2", "PriceBookRatio": "2.1"} for cd, n, _ in OTC]
         return []
     if dt.datetime.strptime(ymd, "%Y%m%d").strftime("%m%d") == "1010":  # 模擬國慶休市
         return {"stat": "很抱歉，沒有符合條件的資料!"}
@@ -109,3 +114,15 @@ if __name__ == "__main__":
     fetch.get_json = fake_get_json
     sys.argv = ["fetch.py", "--days", "70"]
     fetch.main()
+    # 模擬月本益比與分析師預估
+    import json
+    pm = root / "data" / "pe_monthly"; pm.mkdir(parents=True, exist_ok=True)
+    d0 = dt.date.today().replace(day=1)
+    for k in range(1, 37):
+        y, m = d0.year, d0.month - k
+        while m <= 0:
+            y, m = y - 1, m + 12
+        (pm / f"{y}{m:02d}.json").write_text(json.dumps({"date": f"{y}-{m:02d}-28", "pe": {
+            c: round(random.uniform(12, 30), 2) for c, _, _ in STOCKS}}), "utf-8")
+    (root / "data" / "estimates.json").write_text(json.dumps({"updated": "2026-11-08T10:00:00+08:00", "items": {
+        "2330": {"fy": 2026, "y0": 110.6, "y0_lo": 98.4, "y0_hi": 113.4, "y0_n": 22, "y1": 149.5, "y1_lo": 126.5, "y1_hi": 167.1, "y1_n": 21, "at": "2026-11-08"}}}), "utf-8")

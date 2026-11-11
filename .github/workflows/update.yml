@@ -12,9 +12,13 @@ on:
       days:
         description: "回補最近幾個平日（第一次建議 60）"
         default: "1"
+      force_est:
+        description: "立即重抓分析師預估 EPS（平常每週自動一次）"
+        type: boolean
+        default: false
   push:
     branches: [main]
-    paths: ["web/**", "scripts/build.py", ".github/workflows/**"]
+    paths: ["web/**", "scripts/build.py"]
 
 permissions:
   contents: write
@@ -39,11 +43,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install requests
+      - run: pip install requests yfinance
 
       - name: 抓資料
         if: github.event_name != 'push'
         run: python scripts/fetch.py --days "${{ github.event.inputs.days || '3' }}"
+
+      - name: 月底本益比（3 年）
+        if: github.event_name != 'push'
+        continue-on-error: true
+        run: python scripts/pe_history.py
+
+      - name: 分析師預估 EPS（每週）
+        if: github.event_name != 'push'
+        continue-on-error: true
+        run: python scripts/estimates.py ${{ github.event.inputs.force_est == 'true' && '--force' || '' }}
 
       - name: 存回 repo
         if: github.event_name != 'push'

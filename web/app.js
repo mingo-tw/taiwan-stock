@@ -23,7 +23,7 @@
     const a = Math.abs(v);
     return a >= 1e8 ? signed(v / 1e8, 2) + " 億" : signed(v / 1e4, 0) + " 萬";
   };
-  const mmdd = d => d ? d.slice(5).replace("-", "/") : "";
+  const mmdd = d => !d ? "" : d.length === 7 ? d.slice(2).replace("-", "/") : d.slice(5).replace("-", "/");
   const sum = a => a.reduce((s, x) => s + (isNum(x) ? x : 0), 0);
   const sliceRange = (arr, n) => n ? arr.slice(-n) : arr;
 
@@ -56,7 +56,7 @@
     for (let v = lo; v <= hi + step / 2; v += step) out.push(+v.toFixed(10));
     return out;
   }
-  const tickFmt = v => Math.abs(v) >= 1e4 ? nf(v / 1e4, Math.abs(v) >= 1e5 ? 0 : 1) + "萬" : nf(v, Math.abs(v) < 10 && v % 1 ? 1 : 0);
+  const tickFmt = v => Math.abs(v) >= 1e4 ? nf(v / 1e4, Math.abs(v) >= 1e5 ? 0 : 1) + "萬" : nf(v, Math.abs(v % 1) > 1e-9 ? 1 : 0);
 
   function render(node, cfg) {
     const { labels, values, type, fmt } = cfg;
@@ -67,6 +67,7 @@
     const m = { t: 8, r: 8, b: 20, l: 46 };
     let lo = Math.min(...pts.map(p => p.v)), hi = Math.max(...pts.map(p => p.v));
     if (type === "bar") { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+    (cfg.refs || []).forEach(r => { if (isNum(r.v)) { lo = Math.min(lo, r.v); hi = Math.max(hi, r.v); } });
     const ticks = niceTicks(lo, hi);
     const y0 = type === "bar" ? ticks[0] : Math.min(ticks[0], lo), y1 = ticks[ticks.length - 1];
     const n = values.length, iw = W - m.l - m.r, ih = H - m.t - m.b;
@@ -104,7 +105,14 @@
       const a = d + `L${X(pts[pts.length - 1].i)},${m.t + ih}L${X(pts[0].i)},${m.t + ih}Z`;
       marks.appendChild(svgEl("path", { d: a, class: "area" }));
       marks.appendChild(svgEl("path", { d, class: "ln" }));
+      if (pts.length <= 2) pts.forEach(p => marks.appendChild(svgEl("circle", { class: "dot", cx: X(p.i), cy: Y(p.v), r: 4 })));
     }
+    (cfg.refs || []).forEach(r => {
+      if (!isNum(r.v)) return;
+      svg.appendChild(svgEl("line", { class: "ref", x1: m.l, x2: W - m.r, y1: Y(r.v), y2: Y(r.v) }));
+      const t = svgEl("text", { class: "ref-l", x: W - m.r - 2, y: Y(r.v) - 4, "text-anchor": "end" });
+      t.textContent = r.label; svg.appendChild(t);
+    });
     svg.appendChild(marks);
 
     const hover = svgEl("g", { visibility: "hidden" });
@@ -306,6 +314,7 @@
       { k: "融券餘額", v: isNum(L[10]) ? nf(L[10]) + " 張" : "—", s: isNum(L[11]) ? signed(L[11]) + " 張" : null, sc: cls(L[11]) },
       { k: "券資比", v: isNum(ratio) ? nf(ratio, 2) + "%" : "—" },
     ]);
+    drawValuation(S, L);
     drawStockCharts();
     const c = v => ({ t: isNum(v) ? signed(lots(v)) : "—", cls: cls(v) });
     table($("#st-table"), ["日期", "收盤", "漲跌", "外資", "投信", "自營", "合計", "估算資金", "融資", "資增減", "融券", "券增減"],
@@ -313,6 +322,57 @@
         { t: isNum(r[7]) && isNum(r[1]) ? money(r[7] * r[1]) : "—", cls: cls(r[7]) },
         nf(r[8]), { t: signed(r[9]), cls: cls(r[9]) }, nf(r[10]), { t: signed(r[11]), cls: cls(r[11]) }] })));
     drawWatch();
+  }
+
+  // ---------- 估值 ----------
+  function drawValuation(S, L) {
+    const v = S.v || {}, close = L[1], e = v.est;
+    const pos = x => isNum(x) && x > 0;
+    const epsTtm = pos(v.pe) && isNum(close) ? close / v.pe : null;
+    // 未來 12 個月預估 EPS：今年剩餘月份用今年預估、其餘用明年預估（台股多為曆年制）
+    let fwd = null, fwdNote = "";
+    if (e && isNum(e.y0)) {
+      const [yy, mm] = L[0].split("-").map(Number);
+      if (yy === e.fy) {
+        const f = (12 - mm + 1) / 12;
+        fwd = isNum(e.y1) ? f * e.y0 + (1 - f) * e.y1 : e.y0;
+        fwdNote = isNum(e.y1) ? `${e.fy} 年預估 × ${nf(f * 12)}/12 ＋ ${e.fy + 1} 年預估 × ${nf(12 - f * 12)}/12` : `${e.fy} 年預估`;
+      } else if (yy === e.fy + 1 && isNum(e.y1)) { fwd = e.y1; fwdNote = `${e.fy + 1} 年預估`; }
+    }
+    const fwdPe = pos(fwd) && isNum(close) ? close / fwd : null;
+    const est = (y, lo, hi, n) => isNum(y) ? nf(y, 2) + " 元" : "—";
+    const estS = (lo, hi, n) => isNum(n) ? `${nf(n)} 位分析師・${nf(lo, 1)}～${nf(hi, 1)}` : null;
+    tiles($("#val-tiles"), [
+      { k: "本益比（近四季）", v: pos(v.pe) ? nf(v.pe, 2) + " 倍" : (v.pe === null ? "虧損/無" : "—"),
+        s: isNum(epsTtm) ? `近四季 EPS ${nf(epsTtm, 2)} 元` : null },
+      { k: "近 3 年平均本益比", v: isNum(v.avg) ? nf(v.avg, 2) + " 倍" : "—",
+        s: isNum(v.min) ? `最低 ${nf(v.min, 1)}・最高 ${nf(v.max, 1)}（${v.n} 個月）` : "歷史資料不足" },
+      { k: "前瞻本益比", v: isNum(fwdPe) ? nf(fwdPe, 2) + " 倍" : "—",
+        s: isNum(fwd) ? `未來 12 個月預估 EPS ${nf(fwd, 2)} 元` : "無分析師預估" },
+      { k: `${e ? e.fy : "今"}年預估 EPS`, v: est(e?.y0), s: e ? estS(e.y0_lo, e.y0_hi, e.y0_n) : null },
+      { k: `${e ? e.fy + 1 : "明"}年預估 EPS`, v: est(e?.y1), s: e ? estS(e.y1_lo, e.y1_hi, e.y1_n) : null },
+      { k: "殖利率／股價淨值比", v: isNum(v.yld) ? nf(v.yld, 2) + "%" : "—", s: isNum(v.pb) ? `淨值比 ${nf(v.pb, 2)} 倍` : null },
+    ]);
+
+    const rows = [];
+    const tag = (p, lo, mid, hi) => p < lo ? "低於便宜價" : p < mid ? "便宜～合理" : p < hi ? "合理～昂貴" : "高於昂貴價";
+    [["近四季 EPS", epsTtm], ["未來 12 個月預估 EPS", fwd]].forEach(([name, eps]) => {
+      if (!pos(eps) || !isNum(v.avg)) { rows.push({ cells: [name, isNum(eps) ? nf(eps, 2) : "—", "—", "—", "—", "—", "—"] }); return; }
+      const lo = eps * v.min, mid = eps * v.avg, hi = eps * v.max, gap = (close / mid - 1) * 100;
+      rows.push({ cells: [name, nf(eps, 2), nf(lo, 1), nf(mid, 1), nf(hi, 1),
+        { t: signed(gap, 1) + "%", cls: cls(gap) }, { t: tag(close, lo, mid, hi), cls: "pos-tag" }] });
+    });
+    table($("#val-table"), ["基準", "EPS", "便宜價", "合理價", "昂貴價", "現價 vs 合理價", "位階"], rows);
+
+    const H = v.hist || [];
+    chart($("#val-chart"), { type: "line", labels: H.map(h => h[0]), values: H.map(h => h[1]), fmt: x => nf(x, 2) + " 倍",
+      refs: isNum(v.avg) ? [{ v: v.avg, label: `平均 ${nf(v.avg, 1)}` }] : [] });
+
+    const notes = [`便宜／合理／昂貴價 = EPS × 近 3 年月底本益比的最低／平均／最高。現價 ${nf(close, 2)}（${L[0]}）。`];
+    if (fwdNote) notes.push(`未來 12 個月 EPS = ${fwdNote}。分析師預估來自 Yahoo Finance 共識，更新於 ${e.at}。`);
+    if (v.n < 24) notes.push(`本益比歷史目前只有 ${v.n} 個月，平均值參考性較低${S.m === "otc" ? "（上櫃沒有官方歷史本益比，會每天自動累積）" : ""}。`);
+    notes.push("僅供參考，非投資建議。");
+    $("#val-note").textContent = notes.join(" ");
   }
 
   function drawStockCharts() {

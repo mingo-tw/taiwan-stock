@@ -139,3 +139,9 @@ table.clickable tbody tr:hover td { background: var(--grid); }
 footer { text-align: center; padding: 8px 16px calc(24px + env(safe-area-inset-bottom)); }
 .tile .up, td.up { color: var(--up); }
 .tile .down, td.down { color: var(--down); }
+
+.mt { margin-top: 14px !important; }
+#val .tiles { margin-bottom: 10px; }
+.chart .ref { stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1; }
+.chart .ref-l { fill: var(--text-2); font-size: 11px; }
+td.pos-tag { font-size: 12px; color: var(--text-2); }
