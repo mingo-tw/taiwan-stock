@@ -42,6 +42,12 @@ def main():
     if OUT.exists():
         shutil.rmtree(OUT)
     shutil.copytree(WEB, OUT)
+    # 加版本號，避免瀏覽器快取到舊的 JS/CSS
+    import time
+    ver = str(int(time.time()))
+    idx = OUT / "index.html"
+    idx.write_text(idx.read_text("utf-8").replace('href="style.css"', f'href="style.css?v={ver}"')
+                   .replace('src="app.js"', f'src="app.js?v={ver}"'), "utf-8")
     data = OUT / "data"
     data.mkdir(parents=True, exist_ok=True)
 
