@@ -100,7 +100,8 @@ def main():
         hist = [[ym, monthly[ym][code]] for ym in months if monthly[ym].get(code)]
         past = [v for ym, v in hist if ym != cur_month][-36:]
         v = latest_pe.get(code) or [None, None, None]
-        out = {"pe": v[0], "pb": v[1], "yld": v[2], "hist": hist[-37:], "n": len(past)}
+        out = {"pe": v[0], "pb": v[1], "yld": v[2], "hist": hist[-37:], "n": len(past),
+               "pe_why": None if (v[0] or 0) > 0 else ("loss" if code in latest_pe else "na")}
         if names.get(code, ("", ""))[1] == "otc":
             # 上櫃沒有官方歷史本益比：不用 3 年本益比，合理價改用「預估 EPS × 目前本益比」
             out.pop("hist")
@@ -177,6 +178,9 @@ def main():
                 "gap_t": round((close / fair_t - 1) * 100, 1) if fair_t else None,
                 "gap_f": round((close / fair_f - 1) * 100, 1) if fair_f else None,
                 "an": (v.get("est") or {}).get("y1_n") or (v.get("est") or {}).get("y0_n"),
+                # 空白原因：loss=近四季虧損、na=無本益比資料；no_est=無分析師預估、est_loss=預估虧損
+                "pe_why": None if pos(v.get("pe")) else ("loss" if c in latest_pe else "na"),
+                "fpe_why": None if fpe else ("est_loss" if v.get("est") and v["est"].get("y0") is not None else "no_est"),
             })
         rank_v[mk] = rows
     dump(data / "valuation.json", {"date": days[-1]["date"], **rank_v})

@@ -343,12 +343,12 @@
     const est = (y, lo, hi, n) => isNum(y) ? nf(y, 2) + " 元" : "—";
     const estS = (lo, hi, n) => isNum(n) ? `${nf(n)} 位分析師・${nf(lo, 1)}～${nf(hi, 1)}` : null;
     tiles($("#val-tiles"), [
-      { k: "本益比（近四季）", v: pos(v.pe) ? nf(v.pe, 2) + " 倍" : (v.pe === null ? "虧損/無" : "—"),
+      { k: "本益比（近四季）", v: pos(v.pe) ? nf(v.pe, 2) + " 倍" : (v.pe_why === "loss" ? "虧損" : "無資料"),
         s: isNum(epsTtm) ? `近四季 EPS ${nf(epsTtm, 2)} 元` : null },
       { k: "近 3 年平均本益比", v: isNum(v.avg) ? nf(v.avg, 2) + " 倍" : "—",
         s: isNum(v.min) ? `最低 ${nf(v.min, 1)}・最高 ${nf(v.max, 1)}（${v.n} 個月）` : "歷史資料不足" },
       { k: "前瞻本益比", v: isNum(fwdPe) ? nf(fwdPe, 2) + " 倍" : "—",
-        s: isNum(fwd) ? `未來 12 個月預估 EPS ${nf(fwd, 2)} 元` : "無分析師預估" },
+        s: isNum(fwd) ? `未來 12 個月預估 EPS ${nf(fwd, 2)} 元${fwd <= 0 ? "（預估虧損）" : ""}` : "沒有分析師追蹤這檔股票" },
       { k: `${e ? e.fy : "今"}年預估 EPS`, v: est(e?.y0), s: e ? estS(e.y0_lo, e.y0_hi, e.y0_n) : null },
       { k: `${e ? e.fy + 1 : "明"}年預估 EPS`, v: est(e?.y1), s: e ? estS(e.y1_lo, e.y1_hi, e.y1_n) : null },
       { k: "殖利率／股價淨值比", v: isNum(v.yld) ? nf(v.yld, 2) + "%" : "—", s: isNum(v.pb) ? `淨值比 ${nf(v.pb, 2)} 倍` : null },
@@ -445,15 +445,18 @@
     head.push(otc ? "合理價(預估EPS×目前PE)" : gapKey === "gap_t" ? "合理價(近四季)" : "合理價(預估)", "現價 vs 合理價");
     table($("#vr-table"), head,
       rows.map((x, i) => {
-        const cells = [`${ok(x) ? (i + 1) + ". " : "－ "}${x.c} ${x.n}`, nf(x.close, 2), nf(x.cap), pe(x.pe), pe(x.fpe)];
-        if (!otc) cells.push(isNum(x.avg) ? nf(x.avg, 1) + (x.hist_n < 24 ? "*" : "") : "—");
-        cells.push(isNum(x[fairKey]) ? nf(x[fairKey], 1) : "—",
+        const peCell = pos(x.pe) ? nf(x.pe, 1) : { t: WHY[x.pe_why] || "—", cls: "why" };
+        const fpeCell = pos(x.fpe) ? nf(x.fpe, 1) : { t: WHY[x.fpe_why] || "—", cls: "why" };
+        const cells = [`${ok(x) ? (i + 1) + ". " : "－ "}${x.c} ${x.n}`, nf(x.close, 2), nf(x.cap), peCell, fpeCell];
+        if (!otc) cells.push(isNum(x.avg) ? nf(x.avg, 1) + (x.hist_n < 24 ? "*" : "") : { t: "歷史不足", cls: "why" });
+        cells.push(isNum(x[fairKey]) ? nf(x[fairKey], 1) : { t: "無法估算", cls: "why" },
           { t: isNum(x[gapKey]) ? signed(x[gapKey], 1) + "%" : "—", cls: cls(x[gapKey]) });
         return { code: x.c, cells };
       }),
       r => openStock(r.code));
   }
   const pos = x => isNum(x) && x > 0;
+  const WHY = { loss: "虧損", na: "無資料", no_est: "無分析師預估", est_loss: "預估虧損" };
 
   // ---------- 路由 ----------
   function route() {
