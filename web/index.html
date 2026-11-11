@@ -91,10 +91,12 @@
       <div class="card" id="val">
         <h2>估值</h2>
         <div class="tiles" id="val-tiles"></div>
-        <h3>合理價估算（EPS × 近 3 年本益比）</h3>
+        <h3 id="val-fair-h">合理價估算（EPS × 近 3 年本益比）</h3>
         <div class="table-wrap"><table id="val-table"></table></div>
-        <h3 class="mt">本益比（月底）</h3>
-        <div class="chart short" id="val-chart"></div>
+        <div id="val-hist">
+          <h3 class="mt">本益比（月底）</h3>
+          <div class="chart short" id="val-chart"></div>
+        </div>
         <p class="note" id="val-note"></p>
       </div>
       <div class="card-h outside"><h2>走勢</h2><div class="seg" data-range="st"></div></div>
@@ -152,7 +154,7 @@
     </div>
     <div class="card"><div class="table-wrap"><table id="vr-table" class="clickable"></table></div>
       <p class="note">範圍：依市值（收盤價 × 已發行股數）取上市前 200 大、上櫃前 100 大。越便宜排越上面；沒有該項數字（虧損、無分析師預估、歷史不足）的排在最後。
-        合理價 = EPS × 近 3 年平均本益比。前瞻本益比用分析師預估的未來 12 個月 EPS。點一列可查看個股。僅供參考，非投資建議。</p>
+        上市合理價 = EPS × 近 3 年平均本益比；上櫃沒有官方歷史本益比，合理價 = 預估 EPS × 目前本益比。前瞻本益比用分析師預估的未來 12 個月 EPS。點一列可查看個股。僅供參考，非投資建議。</p>
     </div>
   </section>
 </main>

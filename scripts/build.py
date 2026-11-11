@@ -95,7 +95,12 @@ def main():
         past = [v for ym, v in hist if ym != cur_month][-36:]
         v = latest_pe.get(code) or [None, None, None]
         out = {"pe": v[0], "pb": v[1], "yld": v[2], "hist": hist[-37:], "n": len(past)}
-        if past:
+        if names.get(code, ("", ""))[1] == "otc":
+            # 上櫃沒有官方歷史本益比：不用 3 年本益比，合理價改用「預估 EPS × 目前本益比」
+            out.pop("hist")
+            out["n"] = 0
+            out["mode"] = "otc"
+        elif past:
             out.update(avg=round(sum(past) / len(past), 2), min=min(past), max=max(past))
         e = est.get("items", {}).get(code)
         if e:
@@ -152,8 +157,12 @@ def main():
             fe = fwd_eps(v.get("est"))
             fpe = close / fe if pos(fe) else None
             avg = v.get("avg")
-            fair_t = ttm * avg if pos(ttm) and avg else None
-            fair_f = fe * avg if pos(fe) and avg else None
+            if mk == "otc":  # 合理價 = 預估 EPS × 目前本益比
+                fair_t = None
+                fair_f = fe * v["pe"] if pos(fe) and pos(v.get("pe")) else None
+            else:
+                fair_t = ttm * avg if pos(ttm) and avg else None
+                fair_f = fe * avg if pos(fe) and avg else None
             rows.append({
                 "c": c, "n": r[NAME], "close": close, "chg": r[CHG], "cap": round(caps[c] / 1e8), "cap_rank": i + 1,
                 "pe": v.get("pe"), "fpe": round(fpe, 2) if fpe else None, "avg": avg, "hist_n": v.get("n"),

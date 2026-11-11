@@ -354,6 +354,22 @@
       { k: "殖利率／股價淨值比", v: isNum(v.yld) ? nf(v.yld, 2) + "%" : "—", s: isNum(v.pb) ? `淨值比 ${nf(v.pb, 2)} 倍` : null },
     ]);
 
+    const otc = v.mode === "otc";
+    $("#val-hist").hidden = otc;
+    $("#val-fair-h").textContent = otc ? "合理價估算（預估 EPS × 目前本益比）" : "合理價估算（EPS × 近 3 年本益比）";
+    if (otc) {
+      $$("#val-tiles .tile")[1].remove();  // 不顯示 3 年平均本益比
+      const fair = pos(fwd) && pos(v.pe) ? fwd * v.pe : null, gap = fair ? (close / fair - 1) * 100 : null;
+      table($("#val-table"), ["基準", "預估 EPS", "目前本益比", "合理價", "現價", "現價 vs 合理價"],
+        [{ cells: ["未來 12 個月預估 EPS", isNum(fwd) ? nf(fwd, 2) : "—", pos(v.pe) ? nf(v.pe, 2) : "—",
+          fair ? nf(fair, 1) : "—", nf(close, 2), { t: isNum(gap) ? signed(gap, 1) + "%" : "—", cls: cls(gap) }] }]);
+      const n2 = ["上櫃沒有官方歷史本益比，所以不用 3 年本益比；合理價 = 未來 12 個月預估 EPS × 目前本益比（假設市場維持現在的本益比）。"];
+      if (fwdNote) n2.push(`未來 12 個月 EPS = ${fwdNote}。分析師預估來自 Yahoo Finance 共識，更新於 ${e.at}。`);
+      else n2.push("這檔沒有分析師預估，無法估算合理價。");
+      n2.push("僅供參考，非投資建議。");
+      $("#val-note").textContent = n2.join(" ");
+      return;
+    }
     const rows = [];
     const tag = (p, lo, mid, hi) => p < lo ? "低於便宜價" : p < mid ? "便宜～合理" : p < hi ? "合理～昂貴" : "高於昂貴價";
     [["近四季 EPS", epsTtm], ["未來 12 個月預估 EPS", fwd]].forEach(([name, eps]) => {
@@ -411,6 +427,11 @@
   state.vmkt = "twse";
   function drawValueRank() {
     const V = state.valuation; if (!V) return;
+    const optT = $('#vr-sort option[value="gap_t"]');
+    optT.hidden = optT.disabled = state.vmkt === "otc";
+    if (state.vmkt === "otc" && $("#vr-sort").value === "gap_t") $("#vr-sort").value = "gap_f";
+    $('#vr-sort option[value="gap_f"]').textContent = state.vmkt === "otc"
+      ? "現價 vs 合理價・預估EPS×目前本益比（低→高）" : "現價 vs 合理價・預估 EPS（低→高）";
     const key = $("#vr-sort").value, rows = (V[state.vmkt] || []).slice();
     const ok = x => isNum(x[key]) && (key.startsWith("gap") || x[key] > 0);
     rows.sort((a, b) => (ok(b) - ok(a)) || (ok(a) ? a[key] - b[key] : b.cap - a.cap));
@@ -418,13 +439,18 @@
     $("#vr-title").textContent = `估值排行（${V.date}）`;
     $("#vr-count").textContent = `${nOk} / ${rows.length} 檔有數字`;
     const gapKey = key === "gap_t" ? "gap_t" : "gap_f", fairKey = gapKey === "gap_t" ? "fair_t" : "fair_f";
-    const pe = x => pos(x) ? nf(x, 1) : "—";
-    table($("#vr-table"), ["排名・股票", "收盤", "市值(億)", "目前本益比", "前瞻本益比", "3年均本益比",
-      gapKey === "gap_t" ? "合理價(近四季)" : "合理價(預估)", "現價 vs 合理價"],
-      rows.map((x, i) => ({ code: x.c, cells: [`${ok(x) ? (i + 1) + ". " : "－ "}${x.c} ${x.n}`, nf(x.close, 2), nf(x.cap),
-        pe(x.pe), pe(x.fpe), isNum(x.avg) ? nf(x.avg, 1) + (x.hist_n < 24 ? "*" : "") : "—",
-        isNum(x[fairKey]) ? nf(x[fairKey], 1) : "—",
-        { t: isNum(x[gapKey]) ? signed(x[gapKey], 1) + "%" : "—", cls: cls(x[gapKey]) }] })),
+    const pe = x => pos(x) ? nf(x, 1) : "—", otc = state.vmkt === "otc";
+    const head = ["排名・股票", "收盤", "市值(億)", "目前本益比", "前瞻本益比"];
+    if (!otc) head.push("3年均本益比");
+    head.push(otc ? "合理價(預估EPS×目前PE)" : gapKey === "gap_t" ? "合理價(近四季)" : "合理價(預估)", "現價 vs 合理價");
+    table($("#vr-table"), head,
+      rows.map((x, i) => {
+        const cells = [`${ok(x) ? (i + 1) + ". " : "－ "}${x.c} ${x.n}`, nf(x.close, 2), nf(x.cap), pe(x.pe), pe(x.fpe)];
+        if (!otc) cells.push(isNum(x.avg) ? nf(x.avg, 1) + (x.hist_n < 24 ? "*" : "") : "—");
+        cells.push(isNum(x[fairKey]) ? nf(x[fairKey], 1) : "—",
+          { t: isNum(x[gapKey]) ? signed(x[gapKey], 1) + "%" : "—", cls: cls(x[gapKey]) });
+        return { code: x.c, cells };
+      }),
       r => openStock(r.code));
   }
   const pos = x => isNum(x) && x > 0;
