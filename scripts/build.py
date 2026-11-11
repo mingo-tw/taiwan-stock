@@ -118,6 +118,54 @@ def main():
              {"c": code, "n": names[code][0], "m": names[code][1], "rows": rows, "v": valuation(code)})
     dump(data / "stocks.json", sorted([[c, n, m] for c, (n, m) in names.items() if c.isalnum()]))
 
+    # ---- 估值排行：上市市值前 200、上櫃市值前 100 ----
+    try:
+        shares = json.loads((ROOT / "data" / "shares.json").read_text("utf-8"))["items"]
+    except Exception:  # noqa: BLE001
+        shares = {}
+    last_stocks = days[-1].get("stocks", {})
+    yy, mm = int(days[-1]["date"][:4]), int(days[-1]["date"][5:7])
+
+    def fwd_eps(e):
+        if not e or e.get("y0") is None:
+            return None
+        if yy == e["fy"]:
+            f = (12 - mm + 1) / 12
+            return f * e["y0"] + (1 - f) * e["y1"] if e.get("y1") is not None else e["y0"]
+        if yy == e["fy"] + 1:
+            return e.get("y1")
+        return None
+
+    def pos(x):
+        return x is not None and x > 0
+
+    caps = {c: r[CLOSE] * shares[c][0] for c, r in last_stocks.items()
+            if c in shares and r[CLOSE] and not c.startswith("00")}
+    rank_v = {}
+    for mk, n in (("twse", 200), ("otc", 100)):
+        codes = sorted([c for c in caps if last_stocks[c][MKT] == mk], key=caps.get, reverse=True)[:n]
+        rows = []
+        for i, c in enumerate(codes):
+            r, v = last_stocks[c], valuation(c)
+            close = r[CLOSE]
+            ttm = close / v["pe"] if pos(v.get("pe")) else None
+            fe = fwd_eps(v.get("est"))
+            fpe = close / fe if pos(fe) else None
+            avg = v.get("avg")
+            fair_t = ttm * avg if pos(ttm) and avg else None
+            fair_f = fe * avg if pos(fe) and avg else None
+            rows.append({
+                "c": c, "n": r[NAME], "close": close, "chg": r[CHG], "cap": round(caps[c] / 1e8), "cap_rank": i + 1,
+                "pe": v.get("pe"), "fpe": round(fpe, 2) if fpe else None, "avg": avg, "hist_n": v.get("n"),
+                "ttm": round(ttm, 2) if ttm else None, "feps": round(fe, 2) if fe else None,
+                "fair_t": round(fair_t, 1) if fair_t else None, "fair_f": round(fair_f, 1) if fair_f else None,
+                "gap_t": round((close / fair_t - 1) * 100, 1) if fair_t else None,
+                "gap_f": round((close / fair_f - 1) * 100, 1) if fair_f else None,
+                "an": (v.get("est") or {}).get("y1_n") or (v.get("est") or {}).get("y0_n"),
+            })
+        rank_v[mk] = rows
+    dump(data / "valuation.json", {"date": days[-1]["date"], **rank_v})
+
     # ---- 最新一日排行 ----
     last = days[-1]
     items = []

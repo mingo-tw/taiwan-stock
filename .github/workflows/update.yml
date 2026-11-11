@@ -54,6 +54,11 @@ jobs:
         continue-on-error: true
         run: python scripts/pe_history.py
 
+      - name: 已發行股數（每週，算市值）
+        if: github.event_name != 'push'
+        continue-on-error: true
+        run: python scripts/shares.py
+
       - name: 分析師預估 EPS（每週）
         if: github.event_name != 'push'
         continue-on-error: true

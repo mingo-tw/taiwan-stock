@@ -17,7 +17,8 @@
     <a href="#inst" data-tab="inst">三大法人</a>
     <a href="#margin" data-tab="margin">融資融券</a>
     <a href="#stock" data-tab="stock">個股查詢</a>
-    <a href="#rank" data-tab="rank">排行</a>
+    <a href="#rank" data-tab="rank">籌碼排行</a>
+    <a href="#value" data-tab="value">估值排行</a>
   </nav>
 </header>
 
@@ -128,6 +129,30 @@
     </div>
     <div class="card"><div class="table-wrap"><table id="rk-table" class="clickable"></table></div>
       <p class="note">金額為估算（買賣超股數 × 收盤價）。點一列可查看個股。券資比僅列融資餘額 ≥ 1,000 張的股票。</p>
+    </div>
+  </section>
+
+  <!-- 估值排行 -->
+  <section id="v-value" class="view">
+    <div class="card-h outside">
+      <h2 id="vr-title">估值排行</h2>
+      <div class="seg" id="vr-mkt">
+        <button type="button" data-m="twse" class="on">上市前 200</button>
+        <button type="button" data-m="otc">上櫃前 100</button>
+      </div>
+    </div>
+    <div class="card-h outside">
+      <select id="vr-sort">
+        <option value="fpe">前瞻本益比（低→高）</option>
+        <option value="pe">目前本益比（低→高）</option>
+        <option value="gap_f">現價 vs 合理價・預估 EPS（低→高）</option>
+        <option value="gap_t">現價 vs 合理價・近四季 EPS（低→高）</option>
+      </select>
+      <span class="muted small" id="vr-count"></span>
+    </div>
+    <div class="card"><div class="table-wrap"><table id="vr-table" class="clickable"></table></div>
+      <p class="note">範圍：依市值（收盤價 × 已發行股數）取上市前 200 大、上櫃前 100 大。越便宜排越上面；沒有該項數字（虧損、無分析師預估、歷史不足）的排在最後。
+        合理價 = EPS × 近 3 年平均本益比。前瞻本益比用分析師預估的未來 12 個月 EPS。點一列可查看個股。僅供參考，非投資建議。</p>
     </div>
   </section>
 </main>

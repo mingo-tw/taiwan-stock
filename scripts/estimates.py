@@ -22,6 +22,18 @@ EXTRA = fetch.ROOT / "config" / "extra_codes.txt"
 TOP_TWSE, TOP_OTC = 300, 100
 
 
+def mcap_top(last_file, n_twse=200, n_otc=100):
+    """依最新收盤價 × 已發行股數排出市值前幾名"""
+    try:
+        shares = json.loads((fetch.ROOT / "data" / "shares.json").read_text("utf-8"))["items"]
+        last = json.loads(last_file.read_text("utf-8"))["stocks"]
+    except Exception:  # noqa: BLE001
+        return []
+    cap = {c: r[2] * shares[c][0] for c, r in last.items() if c in shares and r[2] and not c.startswith("00")}
+    rk = sorted(cap, key=cap.get, reverse=True)
+    return [c for c in rk if last[c][1] == "twse"][:n_twse] + [c for c in rk if last[c][1] == "otc"][:n_otc]
+
+
 def pick_codes():
     files = sorted(fetch.RAW.glob("2*.json"))[-20:]
     amt, mkt = {}, {}
@@ -35,6 +47,10 @@ def pick_codes():
                 amt[code] = amt.get(code, 0) + r[2] * r[4]
     ranked = sorted(amt, key=amt.get, reverse=True)
     codes = [c for c in ranked if mkt[c] == "twse"][:TOP_TWSE] + [c for c in ranked if mkt[c] == "otc"][:TOP_OTC]
+    # 市值前 200（上市）＋前 100（上櫃），給估值排行用
+    for c in mcap_top(files[-1] if files else None):
+        if c not in codes:
+            codes.append(c)
     if EXTRA.exists():
         for line in EXTRA.read_text("utf-8").splitlines():
             c = line.split("#")[0].strip()

@@ -407,11 +407,33 @@
       r => openStock(r.code));
   }
 
+  // ---------- 估值排行 ----------
+  state.vmkt = "twse";
+  function drawValueRank() {
+    const V = state.valuation; if (!V) return;
+    const key = $("#vr-sort").value, rows = (V[state.vmkt] || []).slice();
+    const ok = x => isNum(x[key]) && (key.startsWith("gap") || x[key] > 0);
+    rows.sort((a, b) => (ok(b) - ok(a)) || (ok(a) ? a[key] - b[key] : b.cap - a.cap));
+    const nOk = rows.filter(ok).length;
+    $("#vr-title").textContent = `估值排行（${V.date}）`;
+    $("#vr-count").textContent = `${nOk} / ${rows.length} 檔有數字`;
+    const gapKey = key === "gap_t" ? "gap_t" : "gap_f", fairKey = gapKey === "gap_t" ? "fair_t" : "fair_f";
+    const pe = x => pos(x) ? nf(x, 1) : "—";
+    table($("#vr-table"), ["排名・股票", "收盤", "市值(億)", "目前本益比", "前瞻本益比", "3年均本益比",
+      gapKey === "gap_t" ? "合理價(近四季)" : "合理價(預估)", "現價 vs 合理價"],
+      rows.map((x, i) => ({ code: x.c, cells: [`${ok(x) ? (i + 1) + ". " : "－ "}${x.c} ${x.n}`, nf(x.close, 2), nf(x.cap),
+        pe(x.pe), pe(x.fpe), isNum(x.avg) ? nf(x.avg, 1) + (x.hist_n < 24 ? "*" : "") : "—",
+        isNum(x[fairKey]) ? nf(x[fairKey], 1) : "—",
+        { t: isNum(x[gapKey]) ? signed(x[gapKey], 1) + "%" : "—", cls: cls(x[gapKey]) }] })),
+      r => openStock(r.code));
+  }
+  const pos = x => isNum(x) && x > 0;
+
   // ---------- 路由 ----------
   function route() {
     const h = location.hash.slice(1) || "overview";
     const [tab, code] = h.startsWith("stock-") ? ["stock", h.slice(6)] : [h, null];
-    const name = ["overview", "inst", "margin", "stock", "rank"].includes(tab) ? tab : "overview";
+    const name = ["overview", "inst", "margin", "stock", "rank", "value"].includes(tab) ? tab : "overview";
     $$(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + name));
     $$("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === name));
     if (name === "stock") {
@@ -434,11 +456,16 @@
       if (i >= 0) w.splice(i, 1); else w.push(c); setWatch(w); drawWatch();
     });
     $("#rk-sel").addEventListener("change", drawRank);
+    $("#vr-sort").addEventListener("change", drawValueRank);
+    $$("#vr-mkt button").forEach(b => b.addEventListener("click", () => {
+      state.vmkt = b.dataset.m; $$("#vr-mkt button").forEach(x => x.classList.toggle("on", x === b)); drawValueRank();
+    }));
     addEventListener("hashchange", route);
     addEventListener("scroll", hideTip, { passive: true });
 
     try {
       const [m, l, s] = await Promise.all([getJSON("data/market.json"), getJSON("data/latest.json"), getJSON("data/stocks.json")]);
+      getJSON("data/valuation.json").then(v => { state.valuation = v; drawValueRank(); }).catch(() => {});
       state.market = m; state.latest = l; state.stocks = s;
       s.forEach(x => state.stockMap.set(x[0], x));
       const dl = $("#codes"); dl.replaceChildren(...s.map(x => { const o = el("option"); o.value = `${x[0]} ${x[1]}`; return o; }));
