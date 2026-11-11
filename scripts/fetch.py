@@ -288,6 +288,9 @@ def _roc_to_ymd(s):
     return None
 
 
+OTC_CODE = re.compile(r"^(\d{4}|00\d{2,4}[A-Z]?)$")  # 一般股票 4 碼、ETF 00 開頭
+
+
 def tpex_latest(ymd):
     """TPEx OpenAPI 只給最新交易日；日期不符就不用。任何欄位對不上都安靜跳過。"""
     out = {}
@@ -296,7 +299,7 @@ def tpex_latest(ymd):
         if q and _roc_to_ymd(_pick(q[0], r"^Date$", "日期")) == ymd:
             for d in q:
                 code = str(_pick(d, r"SecuritiesCompanyCode", r"^Code$", "代號") or "").strip()
-                if not code:
+                if not OTC_CODE.match(code):  # 排除權證、可轉債等
                     continue
                 close = num(_pick(d, r"^Close$", "收盤"))
                 out[code] = {"name": str(_pick(d, r"CompanyName", r"^Name$", "名稱") or "").strip(),
@@ -452,17 +455,26 @@ def main():
         if files:
             path = files[-1]
             day = json.loads(path.read_text("utf-8"))
-            if not any(r[1] == "otc" for r in day.get("stocks", {}).values()):
+            otc_rows = {c: r for c, r in day.get("stocks", {}).items() if r[1] == "otc"}
+            has_inst = any(r[8] is not None for r in otc_rows.values())
+            has_margin = any(r[9] is not None for r in otc_rows.values())
+            if not (otc_rows and has_inst and has_margin):
                 ymd = path.stem
                 log(f"[{ymd}] 補抓上櫃…")
                 otc = tpex_latest(ymd)
+                for c in list(day["stocks"]):
+                    if day["stocks"][c][1] == "otc" and not OTC_CODE.match(c):
+                        del day["stocks"][c]
                 for code, q in otc.items():
                     i, m = q.get("inst"), q.get("margin")
-                    day["stocks"][code] = [q["name"], "otc", q["close"], q["chg"], q["vol"],
-                                           i and i["foreign"], i and i["trust"], i and i["dealer"], i and i["total"],
-                                           m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"]]
-                if otc:
-                    path.write_text(json.dumps(day, ensure_ascii=False, separators=(",", ":")), "utf-8")
+                    new = [q["name"], "otc", q["close"], q["chg"], q["vol"],
+                           i and i["foreign"], i and i["trust"], i and i["dealer"], i and i["total"],
+                           m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"]]
+                    old = day["stocks"].get(code)
+                    if old and old[1] == "otc":  # 這次沒抓到的欄位沿用舊值
+                        new = [n if n is not None else o for n, o in zip(new, old)]
+                    day["stocks"][code] = new
+                path.write_text(json.dumps(day, ensure_ascii=False, separators=(",", ":")), "utf-8")
                 n_i = sum(1 for q in otc.values() if q.get("inst"))
                 n_m = sum(1 for q in otc.values() if q.get("margin"))
                 log(f"[{ymd}] 上櫃：{len(otc)} 檔，法人 {n_i} 檔，融資券 {n_m} 檔")
