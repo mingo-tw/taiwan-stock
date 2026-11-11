@@ -1,0 +1,22 @@
+name: probe
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install yfinance requests
+      - name: probe
+        run: |
+          python - <<'PY'
+          import requests, json, yfinance as yf
+          r = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis", timeout=30).json()
+          print("TPEX PE keys", list(r[0].keys()), r[0], len(r))
+          for t in ["2330.TW", "2603.TW", "6488.TWO", "2890.TW"]:
+              try:
+                  e = yf.Ticker(t).earnings_estimate
+                  print(t, "\n", e)
+              except Exception as ex:
+                  print(t, "ERR", repr(ex))
+          PY
