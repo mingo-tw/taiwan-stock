@@ -308,8 +308,12 @@ def tpex_latest(ymd):
     except Exception as e:  # noqa: BLE001
         log("  TPEx quotes 失敗", e)
 
+    if out:
+        log(f"  TPEx 行情欄位：{list(q[0].keys())}")
     try:
         ins = get_json(f"{TPEX_OPENAPI}/tpex_3insti_daily_trading") or []
+        if ins:
+            log(f"  TPEx 法人欄位：{list(ins[0].keys())}")
         if ins and _roc_to_ymd(_pick(ins[0], r"^Date$", "日期")) == ymd:
             for d in ins:
                 code = str(_pick(d, r"SecuritiesCompanyCode", r"^Code$", "代號") or "").strip()
@@ -327,6 +331,8 @@ def tpex_latest(ymd):
 
     try:
         mg = get_json(f"{TPEX_OPENAPI}/tpex_mainboard_margin_balance") or []
+        if mg:
+            log(f"  TPEx 融資券欄位：{list(mg[0].keys())}")
         if mg and _roc_to_ymd(_pick(mg[0], r"^Date$", "日期")) == ymd:
             for d in mg:
                 code = str(_pick(d, r"SecuritiesCompanyCode", r"^Code$", "代號") or "").strip()
@@ -420,8 +426,7 @@ def main():
         path = RAW / f"{ymd}.json"
         if ymd in closed or complete(path):
             continue
-        # TPEx OpenAPI 只有最新一日，所以只有抓當天才順便抓上櫃
-        day = fetch_day(ymd, with_tpex=(not a.no_tpex and ymd == today))
+        day = fetch_day(ymd, with_tpex=False)
         if day is None:
             if ymd < today:  # 過去的日子查無資料 = 休市
                 closed.add(ymd)
@@ -439,6 +444,28 @@ def main():
         got += 1
         log(f"[{ymd}] 完成：{len(day['stocks'])} 檔，"
             f"法人={'有' if day['inst'] else '無'}，融資券={'有' if day['margin'] else '無'}")
+
+    # 上櫃：TPEx OpenAPI 只給「最新交易日」。只要最新一份快照還沒有上櫃資料，就去抓，
+    # tpex_latest 會檢查日期，對得上才合併；所以凌晨或隔天早上的排程也能補到前一日。
+    if not a.no_tpex:
+        files = sorted(RAW.glob("2*.json"))
+        if files:
+            path = files[-1]
+            day = json.loads(path.read_text("utf-8"))
+            if not any(r[1] == "otc" for r in day.get("stocks", {}).values()):
+                ymd = path.stem
+                log(f"[{ymd}] 補抓上櫃…")
+                otc = tpex_latest(ymd)
+                for code, q in otc.items():
+                    i, m = q.get("inst"), q.get("margin")
+                    day["stocks"][code] = [q["name"], "otc", q["close"], q["chg"], q["vol"],
+                                           i and i["foreign"], i and i["trust"], i and i["dealer"], i and i["total"],
+                                           m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"]]
+                if otc:
+                    path.write_text(json.dumps(day, ensure_ascii=False, separators=(",", ":")), "utf-8")
+                n_i = sum(1 for q in otc.values() if q.get("inst"))
+                n_m = sum(1 for q in otc.values() if q.get("margin"))
+                log(f"[{ymd}] 上櫃：{len(otc)} 檔，法人 {n_i} 檔，融資券 {n_m} 檔")
 
     HOLIDAYS.write_text(json.dumps(sorted(closed)), "utf-8")
     log(f"共更新 {got} 天")
