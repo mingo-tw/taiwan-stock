@@ -11,4 +11,4 @@ html_handling = "auto-trailing-slash"
 [[d1_databases]]
 binding = "DB"
 database_name = "taiwan-stock-auth"
-database_id = "941f141d-36fe-4516-b1f7-0861e1f33aca"
+database_id = "c448f513-aef0-4c79-b644-48749ab09bd5"
