@@ -493,7 +493,7 @@
       $$("#sg-table tbody tr").forEach((tr, i) => {
         const x = rows[i], held = getPos().open.some(p => p.c === x.c);
         const b = el("button", "btn-s" + (held ? "" : " on"), held ? "已在持股" : "＋我買了"); b.type = "button"; b.disabled = held;
-        b.addEventListener("click", e => { e.stopPropagation(); addPos({ c: x.c, n: x.n, m: x.m, sig: x.first, entry: x.entry ? x.entry.d : null, px: x.entry ? x.entry.px : null }); drawSignals(); });
+        b.addEventListener("click", e => { e.stopPropagation(); addPos({ c: x.c, n: x.n, m: x.m, sig: x.first, entry: x.entry ? x.entry.d : null, px: x.entry ? x.entry.px : null }); });
         tr.lastElementChild.replaceChildren(b);
       });
     }
@@ -517,16 +517,51 @@
 
   // ---------- 我的持股 ----------
   const POS_KEY = "tw_positions_v1";
-  function getPos() {
-    try { const v = JSON.parse(localStorage.getItem(POS_KEY) || "null"); if (v && Array.isArray(v.open) && Array.isArray(v.done)) return v; } catch { /* */ }
+  const posState = { data: { open: [], done: [] }, version: 0, server: false, err: "" };
+  const okPos = v => v && Array.isArray(v.open) && Array.isArray(v.done);
+  function localPos() {
+    try { const v = JSON.parse(localStorage.getItem(POS_KEY) || "null"); if (okPos(v)) return v; } catch { /* */ }
     return { open: [], done: [] };
   }
-  function setPos(v) { try { localStorage.setItem(POS_KEY, JSON.stringify(v)); } catch { alert("這個瀏覽器不允許儲存，持股紀錄無法保存。"); } }
-  function addPos(p) {
-    const v = getPos();
-    if (v.open.some(x => x.c === p.c)) return;
-    v.open.push({ ...p, added: new Date().toISOString().slice(0, 10) });
-    setPos(v); drawHold();
+  function saveLocal(v) { try { localStorage.setItem(POS_KEY, JSON.stringify(v)); } catch { alert("這個瀏覽器不允許儲存，持股紀錄無法保存。"); } }
+  const getPos = () => posState.data;
+  // 登入模式：存在伺服器（綁帳號，換裝置也在）；開放模式：只存這個瀏覽器
+  async function srv(method, body) {
+    const r = await fetch("api/positions", { method, credentials: "same-origin", cache: "no-store",
+      headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+    return { status: r.status, json: await r.json().catch(() => ({})) };
+  }
+  async function loadPos() {
+    if (auth.mode !== "key") { posState.server = false; posState.data = localPos(); return drawHold(); }
+    try {
+      const r = await srv("GET");
+      if (r.status !== 200) throw new Error("status " + r.status);
+      posState.server = true; posState.err = "";
+      posState.version = r.json.version; posState.data = r.json.data;
+      const loc = localPos();  // 第一次登入：把這個瀏覽器原本的持股搬上帳號
+      if (!posState.data.open.length && !posState.data.done.length && (loc.open.length || loc.done.length)) {
+        await mutatePos(() => loc, true);
+        try { localStorage.removeItem(POS_KEY); } catch { /* */ }
+      }
+    } catch { posState.server = false; posState.err = "連不上伺服器，目前顯示的是這個瀏覽器的紀錄。"; posState.data = localPos(); }
+    drawHold();
+  }
+  // fn(目前資料) → 新資料。伺服器版會先取最新、改完再存；別台裝置同時改到時（409）自動重來
+  async function mutatePos(fn, quiet) {
+    if (!posState.server) { posState.data = fn(JSON.parse(JSON.stringify(posState.data))) || posState.data; saveLocal(posState.data); return; }
+    for (let k = 0; k < 4; k++) {
+      const next = fn(JSON.parse(JSON.stringify(posState.data))) || posState.data;
+      const r = await srv("PUT", { base: posState.version, data: next }).catch(() => ({ status: 0, json: {} }));
+      if (r.status === 200) { posState.data = next; posState.version = r.json.version; return; }
+      if (r.status === 409) { posState.data = r.json.data; posState.version = r.json.version; continue; }
+      if (!quiet) alert("存檔失敗（" + (r.status || "網路") + "），請稍後再試。");
+      return;
+    }
+    if (!quiet) alert("同時有其他裝置在修改，請再按一次。");
+  }
+  async function addPos(p) {
+    await mutatePos(v => { if (!v.open.some(x => x.c === p.c)) v.open.push({ ...p, added: new Date().toISOString().slice(0, 10) }); return v; });
+    drawHold(); drawSignals();
   }
   // 成本：買賣各 0.1425% 手續費 + 賣出 0.3% 證交稅（與回測相同）
   const netRet = (px, buy) => (px * (1 - 0.001425 - 0.003) / (buy * 1.001425) - 1) * 100;
@@ -563,6 +598,7 @@
     const v = getPos(), T = state.track;
     $("#hd-title").textContent = T && T.date ? `我的持股（資料日 ${T.date}）` : "我的持股";
     $("#hd-empty").hidden = v.open.length > 0;
+    $("#hd-where").textContent = posState.err || (posState.server ? "持股存在你的帳號裡，換手機或電腦登入後都會同步。" : "目前網站是開放模式，持股只存在這個瀏覽器；改成登入制後會自動搬到帳號。");
     const infos = v.open.map(p => { const h = holdInfo(p); return { p, h, st: holdStatus(p, h) }; });
     const alerts = infos.filter(x => x.st.alert);
     $("#hd-badge").hidden = !alerts.length; $("#hd-badge").textContent = alerts.length;
@@ -585,20 +621,17 @@
           const def = h.now || "";
           const s = prompt(`${p.c} ${p.n || ""} 的實際賣出價（元）？`, def);
           const px = parseFloat(s); if (!isFinite(px) || px <= 0) return;
-          const cur = getPos(), k = cur.open.findIndex(x => x.c === p.c); if (k < 0) return;
-          const buy = h.buy || parseFloat(p.px);
-          cur.open.splice(k, 1);
-          cur.done.unshift({ c: p.c, n: p.n, m: p.m, entry: h.entry || p.entry, buy, sold: new Date().toISOString().slice(0, 10), sell: px, ret: isFinite(buy) ? netRet(px, buy) : null, days: h.days || null });
-          setPos(cur); drawHold(); drawSignals();
+          const buy = h.buy || parseFloat(p.px), d = { c: p.c, n: p.n, m: p.m, entry: h.entry || p.entry, buy, sold: new Date().toISOString().slice(0, 10), sell: px, ret: isFinite(buy) ? netRet(px, buy) : null, days: h.days || null };
+          mutatePos(cur => { const k = cur.open.findIndex(x => x.c === p.c); if (k < 0) return cur; cur.open.splice(k, 1); cur.done.unshift(d); return cur; }).then(() => { drawHold(); drawSignals(); });
         }),
         btn("改進場價", () => {
           const s = prompt(`${p.c} 的實際買進價（元）？`, h.buy || p.px || ""); const px = parseFloat(s);
           if (!isFinite(px) || px <= 0) return;
-          const cur = getPos(), q = cur.open.find(x => x.c === p.c); if (q) { q.px = px; setPos(cur); drawHold(); }
+          mutatePos(cur => { const q = cur.open.find(x => x.c === p.c); if (q) q.px = px; return cur; }).then(drawHold);
         }),
         btn("刪除", () => {
           if (!confirm(`刪除 ${p.c} ${p.n || ""} 的紀錄？（不會記入已賣出紀錄）`)) return;
-          const cur = getPos(); cur.open = cur.open.filter(x => x.c !== p.c); setPos(cur); drawHold(); drawSignals();
+          mutatePos(cur => { cur.open = cur.open.filter(x => x.c !== p.c); return cur; }).then(() => { drawHold(); drawSignals(); });
         }));
     });
     table($("#hd-done"), ["股票", "買進", "賣出", "持有", "報酬"],
@@ -715,7 +748,7 @@
   }
   function startHeartbeat() { stopHeartbeat(); auth.timer = setInterval(beat, 60000); }
   function stopHeartbeat() { if (auth.timer) clearInterval(auth.timer); auth.timer = null; }
-  document.addEventListener("visibilitychange", () => { if (auth.mode === "key" && auth.timer) beat(); });
+  document.addEventListener("visibilitychange", () => { if (auth.mode === "key" && auth.timer) beat(); if (!document.hidden && posState.server) loadPos(); });
 
   // ---------- 啟動 ----------
   async function getJSON(p) {
@@ -761,6 +794,7 @@
       e.preventDefault(); setSaved(null); $("#gate-name").value = ""; $("#gate-pin").value = ""; $("#forget-wrap").hidden = true;
     });
     await checkAuth();
+    await loadPos();
     if (/[?&]apply=1/.test(location.search) && !$("#apply-link").hidden) { $("#gate").hidden = false; showApply(true); }
     segs();
     $("#search").addEventListener("submit", e => { e.preventDefault(); openStock(resolve($("#q").value)); $("#q").blur(); });
@@ -777,8 +811,8 @@
       if (!st) { alert("找不到這個股票代號，請從清單選一檔。"); return; }
       if (!date || !isFinite(px) || px <= 0) { alert("請填買進日期和買進價。"); return; }
       if (getPos().open.some(x => x.c === code)) { alert("這檔已經在持股裡了。"); return; }
-      addPos({ c: code, n: st[1], m: st[2], sig: date, entry: date, px });
       $("#hd-code").value = ""; $("#hd-px").value = "";
+      addPos({ c: code, n: st[1], m: st[2], sig: date, entry: date, px });
     });
     $$("#sg-ver button").forEach(b => b.addEventListener("click", () => {
       state.sver = b.dataset.v; $$("#sg-ver button").forEach(x => x.classList.toggle("on", x === b)); drawSignals();

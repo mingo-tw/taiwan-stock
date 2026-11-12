@@ -23,7 +23,7 @@ web/               前端（純 HTML/CSS/JS，無外部套件）
 
 - `scripts/ohlc.py`：抓市值前 320 大上市＋前 160 大上櫃的開高低收與三大法人，存 `data/ohlc/YYYYMMDD.json`（每天排程補最近 3 天（回補歷史另有工作流程））。`data/raw` 沒有最高、最低價，上櫃也只有最新一日，所以另存一份。
 - `scripts/signals.py`：算 KD(9,3,3)、RSI(14)、週 K，輸出 `site/data/signals.json`；`build.py` 會自動呼叫。指標與回測用的 JS 版逐點比對過（`tests/test_signals.py`）。
-- **我的持股**（`web/app.js`）：在訊號股按「＋我買了」或手動新增，之後每天依 `site/data/track.json`（每檔最近 70 天的開盤、收盤、RSI）判斷賣出訊號：RSI 回到 60 或賺到 10%，先到先賣，最長 60 個交易日。有賣出訊號時分頁標籤出現紅色數字、網頁標題加 (n)。持股存在瀏覽器 localStorage，不會同步到其他裝置。
+- **我的持股**（`web/app.js`）：在訊號股按「＋我買了」或手動新增，之後每天依 `site/data/track.json`（每檔最近 70 天的開盤、收盤、RSI）判斷賣出訊號：RSI 回到 60 或賺到 10%，先到先賣，最長 60 個交易日。有賣出訊號時分頁標籤出現紅色數字、網頁標題加 (n)。登入制（key 模式）下持股存在 Worker 的 D1（`positions` 表，依帳號分開，`/api/positions`，版本號防止兩台裝置同時修改互相覆蓋），換裝置登入會同步；開放模式只存瀏覽器 localStorage，改成登入制後第一次登入會自動搬上帳號。測試：`node --no-warnings tests/test_positions.mjs`。
 - `config/signal_stats.json`：回測成績（固定資料，不會隨每天更新）。條件或統計要改，改這個檔。
 - 第一次要回補歷史（約 100 個交易日，約 30 分鐘）：Actions → 「回補開高低收（訊號股用）」→ Run workflow；或修改 `data/ohlc_backfill.request` 後 push。資料不足 60 個交易日時，訊號股頁面會顯示「歷史資料累積中」。
 - 測試：`python tests/test_signals.py`、`python tests/test_ohlc.py`（需要 node）。

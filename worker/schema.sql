@@ -43,3 +43,11 @@ CREATE TABLE IF NOT EXISTS applications (
   key_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_app_status ON applications (status, created_at);
+
+-- 「我的持股」：每個帳號一份，換裝置登入也看得到。data 是 JSON，version 用來避免兩台裝置同時改而覆蓋
+CREATE TABLE IF NOT EXISTS positions (
+  key_id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);

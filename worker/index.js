@@ -31,6 +31,7 @@ export default {
       if (p === "/api/heartbeat" && req.method === "POST") return await heartbeat(req, env);
       if (p === "/api/logout" && req.method === "POST") return await logout(req, env);
       if (p === "/api/apply" && req.method === "POST") return await apply(req, env);
+      if (p === "/api/positions") return await positions(req, env);
       if (p.startsWith("/api/")) return json({ error: "not found" }, 404);
 
       if (p.startsWith("/data/")) {
@@ -135,6 +136,55 @@ async function currentSession(req, env, s) {
     return { ok: false, reason: bad };
   }
   return { ok: true, row };
+}
+
+// ---------- 我的持股（綁在登入帳號，換裝置也看得到） ----------
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+const dateOrNull = v => (typeof v === "string" && DATE_RE.test(v) ? v : null);
+const numOrNull = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
+// 只留下需要的欄位、限制長度與筆數，避免被塞入亂資料
+function sanitizePositions(d) {
+  if (!d || !Array.isArray(d.open) || !Array.isArray(d.done)) return null;
+  if (d.open.length > 300 || d.done.length > 1000) return null;
+  const mk = m => (m === "otc" ? "otc" : "twse");
+  const open = d.open.map(x => ({
+    c: str(x && x.c, 12), n: str(x && x.n, 30), m: mk(x && x.m), sig: dateOrNull(x && x.sig), entry: dateOrNull(x && x.entry),
+    px: numOrNull(x && x.px), added: dateOrNull(x && x.added),
+  })).filter(x => x.c);
+  const done = d.done.map(x => ({
+    c: str(x && x.c, 12), n: str(x && x.n, 30), m: mk(x && x.m), entry: dateOrNull(x && x.entry), buy: numOrNull(x && x.buy),
+    sold: dateOrNull(x && x.sold), sell: numOrNull(x && x.sell), ret: numOrNull(x && x.ret), days: numOrNull(x && x.days),
+  })).filter(x => x.c);
+  return { open, done };
+}
+async function positions(req, env) {
+  const s = await settings(env);
+  if (s.auth_mode !== "key") return json({ mode: "open" }, 404);  // 開放模式沒有帳號可綁，前端改存在瀏覽器
+  const c = await currentSession(req, env, s);
+  if (!c.ok) return json({ error: "login required", reason: c.reason }, 401);
+  const keyId = c.row.key_id;
+  const cur = await env.DB.prepare("SELECT data, version FROM positions WHERE key_id = ?").bind(keyId).first();
+  let data = { open: [], done: [] };
+  try { if (cur) data = JSON.parse(cur.data); } catch { /* 壞資料當作空的 */ }
+  const ver = cur ? cur.version : 0;
+  if (req.method === "GET") return json({ version: ver, data });
+  if (req.method === "PUT") {
+    let body;
+    try { body = await req.json(); } catch { return json({ error: "格式不正確" }, 400); }
+    const clean = sanitizePositions(body && body.data);
+    if (!clean) return json({ error: "格式不正確" }, 400);
+    // 版本不對 = 另一台裝置剛改過：請前端拿最新的重做一次
+    if (Number(body.base) !== ver) return json({ error: "conflict", version: ver, data }, 409);
+    const r = await env.DB.prepare(
+      `INSERT INTO positions (key_id, data, version, updated_at) VALUES (?,?,?,?)
+       ON CONFLICT(key_id) DO UPDATE SET data = excluded.data, version = excluded.version, updated_at = excluded.updated_at
+       WHERE positions.version = ?`
+    ).bind(keyId, JSON.stringify(clean), ver + 1, now(), ver).run();
+    if (!r.meta || r.meta.changes < 1) return json({ error: "conflict", version: ver, data }, 409);
+    return json({ ok: true, version: ver + 1 });
+  }
+  return json({ error: "method not allowed" }, 405);
 }
 
 // ---------- 使用者 API ----------
@@ -384,6 +434,7 @@ async function admin(req, env, url) {
       }
       case "delete":
         await endAll("deleted");
+        await env.DB.prepare("DELETE FROM positions WHERE key_id = ?").bind(id).run();
         await env.DB.prepare("DELETE FROM keys WHERE id = ?").bind(id).run();
         break;
       default: return json({ error: "unknown action" }, 400);
