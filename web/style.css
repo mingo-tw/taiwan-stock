@@ -159,3 +159,5 @@ td.why { color: var(--muted); font-size: 12px; }
 [hidden] { display: none !important; }
 .gate-box a, footer a { color: var(--accent); }
 .gate-msg.ok { color: var(--down); }
+.remember { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
+.remember input { width: 18px; height: 18px; padding: 0; }

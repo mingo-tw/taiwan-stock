@@ -167,9 +167,10 @@
     <p class="muted small">請用你申請時的名稱和 4 位數密碼登入</p>
     <input id="gate-name" autocomplete="username" maxlength="40" placeholder="名稱">
     <input id="gate-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="current-password" placeholder="4 位數密碼">
+    <label class="remember"><input type="checkbox" id="gate-remember" checked> 記住我（這台裝置下次不用再輸入）</label>
     <button type="submit" id="gate-btn">登入</button>
     <p id="gate-msg" class="gate-msg"></p>
-    <p class="small"><a href="#" id="to-apply">還沒有帳號？申請使用</a></p>
+    <p class="small"><a href="#" id="to-apply">還沒有帳號？申請使用</a><span id="forget-wrap" hidden>　·　<a href="#" id="forget">清除這台裝置記住的帳號</a></span></p>
     <p class="muted small">一個帳號同時只能在一台裝置使用。換裝置前請先按右上角「登出」；沒登出的話，要等舊裝置閒置幾分鐘後，才能在新裝置登入。本站會記錄登入時間、裝置類型與 IP。</p>
   </form>
   <form id="apply-form" class="gate-box" hidden>

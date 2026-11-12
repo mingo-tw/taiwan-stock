@@ -492,31 +492,58 @@
       if (j.mode !== "key") return true;
       $("#logout").hidden = false;
       if (j.authed) { startHeartbeat(); return true; }
-      return showGate(REASON[j.reason] || "");
+      return showGate(REASON[j.reason] || "", j.reason);
     } catch { return true; }
   }
-  function showGate(msg) {
+  // 「記住我」：名稱與密碼存在這台裝置（localStorage）
+  const RKEY = "twchips.login";
+  const getSaved = () => { try { return JSON.parse(localStorage.getItem(RKEY)); } catch { return null; } };
+  const setSaved = v => { try { v ? localStorage.setItem(RKEY, JSON.stringify(v)) : localStorage.removeItem(RKEY); } catch { /* 無痕模式 */ } };
+  const LOGOUT_FLAG = "twchips.loggedout";
+  // 這台裝置的固定編號（讓同一台裝置重新登入時不會被當成別台）
+  const deviceId = (() => {
+    try {
+      let d = localStorage.getItem("twchips.device");
+      if (!d) { d = crypto.getRandomValues(new Uint32Array(4)).join("-"); localStorage.setItem("twchips.device", d); }
+      return d;
+    } catch { return ""; }
+  })();
+  function showGate(msg, reason) {
     stopHeartbeat();
     $("#gate").hidden = false; $("#gate-msg").textContent = msg || "";
-    setTimeout(() => $("#gate-name").focus(), 50);
-    return new Promise(resolve => { auth.resolve = resolve; });
+    const saved = getSaved();
+    $("#forget-wrap").hidden = !saved;
+    if (saved) { $("#gate-name").value = saved.name; $("#gate-pin").value = saved.pin; $("#gate-remember").checked = true; }
+    let manual = false; try { manual = sessionStorage.getItem(LOGOUT_FLAG) === "1"; } catch { /* */ }
+    // 有記住帳號、而且不是自己按登出／被別台接手／被管理員登出 → 自動登入
+    const auto = saved && !manual && !["takeover", "forced", "disabled", "expired", "deleted"].includes(reason);
+    const p = new Promise(resolve => { auth.resolve = resolve; });
+    if (auto) setTimeout(() => $("#gate-btn").click(), 0);
+    else setTimeout(() => (saved ? $("#gate-btn") : $("#gate-name")).focus(), 50);
+    return p;
   }
   async function submitGate(e) {
     e.preventDefault();
     const btn = $("#gate-btn"); btn.disabled = true; $("#gate-msg").textContent = "";
-    const r = await api("api/login", { name: $("#gate-name").value, pin: $("#gate-pin").value });
+    const remember = $("#gate-remember").checked;
+    const r = await api("api/login", { name: $("#gate-name").value, pin: $("#gate-pin").value, remember, device_id: deviceId });
     btn.disabled = false;
     if (r.ok) {
+      setSaved(remember ? { name: $("#gate-name").value.trim(), pin: $("#gate-pin").value } : null);
+      try { sessionStorage.removeItem(LOGOUT_FLAG); } catch { /* */ }
       $("#gate").hidden = true; $("#gate-pin").value = "";
       startHeartbeat();
       if (auth.resolve) { const f = auth.resolve; auth.resolve = null; f(true); }
       else location.reload();
-    } else $("#gate-msg").textContent = r.error || "登入失敗";
+    } else {
+      $("#gate-msg").textContent = r.error || "登入失敗";
+      if (r.status === 403) setSaved(null);  // 記住的密碼已經不對（例如被重設）→ 清掉
+    }
   }
   async function beat() {
     if (document.visibilityState !== "visible") return;
     const r = await api("api/heartbeat", {}).catch(() => null);
-    if (r && r.status === 401) showGate(REASON[r.reason] || "請重新登入。");
+    if (r && r.status === 401) showGate(REASON[r.reason] || "請重新登入。", r.reason);
   }
   function showApply(on) {
     $("#gate-form").hidden = on; $("#apply-form").hidden = !on;
@@ -541,7 +568,7 @@
   // ---------- 啟動 ----------
   async function getJSON(p) {
     const r = await fetch(p, { cache: "no-cache", credentials: "same-origin" });
-    if (r.status === 401 && auth.mode === "key") { const j = await r.json().catch(() => ({})); await showGate(REASON[j.reason] || "請重新登入。"); return getJSON(p); }
+    if (r.status === 401 && auth.mode === "key") { const j = await r.json().catch(() => ({})); await showGate(REASON[j.reason] || "請重新登入。", j.reason); return getJSON(p); }
     if (!r.ok) throw new Error(p + " " + r.status);
     return r.json();
   }
@@ -555,7 +582,13 @@
       if (auth.mode === "key") showApply(false); else $("#gate").hidden = true;  // 開放模式：直接關掉
     });
     $("#apply-link").addEventListener("click", e => { e.preventDefault(); $("#gate").hidden = false; showApply(true); });
-    $("#logout").addEventListener("click", async () => { await api("api/logout", {}); location.reload(); });
+    $("#logout").addEventListener("click", async () => {
+      try { sessionStorage.setItem(LOGOUT_FLAG, "1"); } catch { /* */ }  // 自己登出：不要自動再登入
+      await api("api/logout", {}); location.reload();
+    });
+    $("#forget").addEventListener("click", e => {
+      e.preventDefault(); setSaved(null); $("#gate-name").value = ""; $("#gate-pin").value = ""; $("#forget-wrap").hidden = true;
+    });
     await checkAuth();
     segs();
     $("#search").addEventListener("submit", e => { e.preventDefault(); openStock(resolve($("#q").value)); $("#q").blur(); });

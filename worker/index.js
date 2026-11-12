@@ -169,23 +169,27 @@ async function login(req, env) {
   const t = now();
   const { results: open } = await env.DB.prepare(
     "SELECT * FROM sessions WHERE key_id = ? AND ended_at IS NULL ORDER BY last_seen DESC").bind(k.id).all();
-  const busy = open.find(x => t - x.last_seen < s.idle_seconds);
+  // 同一台裝置（相同裝置編號）重新登入：直接接手自己的舊連線
+  const devId = String(body.device_id || "").slice(0, 64) || null;
+  const busy = open.find(x => t - x.last_seen < s.idle_seconds && !(devId && x.device_id === devId));
   if (busy) {
     await logEvent(env, req, k.id, "denied_busy");
     const wait = s.idle_seconds - (t - busy.last_seen);
     return json({ ok: false, busy: true, error: `此帳號正在其他裝置（${busy.device}）使用中。請先在那台裝置登出，或約 ${Math.ceil(wait / 60)} 分鐘後再試。` }, 409);
   }
   for (const x of open) {
-    await env.DB.prepare("UPDATE sessions SET ended_at = ?, end_reason = 'takeover' WHERE id = ?").bind(t, x.id).run();
+    const same = devId && x.device_id === devId;
+    await env.DB.prepare("UPDATE sessions SET ended_at = ?, end_reason = ? WHERE id = ?").bind(t, same ? "relogin" : "takeover", x.id).run();
   }
-  if (open.length) await logEvent(env, req, k.id, "takeover");
+  if (open.some(x => !(devId && x.device_id === devId))) await logEvent(env, req, k.id, "takeover");
 
   const tok = randToken();
   await env.DB.prepare(
-    "INSERT INTO sessions (key_id, token_hash, device, ip, country, started_at, last_seen) VALUES (?,?,?,?,?,?,?)"
-  ).bind(k.id, await sha256(tok), device(req), ip, countryOf(req), t, t).run();
+    "INSERT INTO sessions (key_id, token_hash, device, ip, country, started_at, last_seen, device_id) VALUES (?,?,?,?,?,?,?,?)"
+  ).bind(k.id, await sha256(tok), device(req), ip, countryOf(req), t, t, devId).run();
   await logEvent(env, req, k.id, "login");
-  return json({ ok: true, label: k.label }, 200, { "Set-Cookie": cookie(tok, 60 * 60 * 24 * 30) });
+  // 勾「記住我」保留 1 年，否則 30 天
+  return json({ ok: true, label: k.label }, 200, { "Set-Cookie": cookie(tok, 60 * 60 * 24 * (body.remember ? 365 : 30)) });
 }
 
 async function heartbeat(req, env) {
