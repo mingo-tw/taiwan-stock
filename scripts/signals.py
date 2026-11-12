@@ -24,6 +24,7 @@ RAW = ROOT / "data" / "raw"
 WINDOW = 4          # 看最近幾個交易日的訊號（今天往前算 4 個交易日，含今天）
 MIN_ROWS = 60       # 至少要有這麼多天的資料才算指標
 KEEP = 160          # 只讀最近這麼多個交易日
+TRACK_DAYS = 70     # 「我的持股」頁面用：每檔輸出最近這麼多天的開盤、收盤、RSI
 N_TWSE, N_OTC = 200, 100
 TAKE_PROFIT = 0.10  # 賣點參考：賺到 10%
 RSI_EXIT = 60       # 賣點參考：RSI 回到 60
@@ -164,6 +165,8 @@ def build(stats=None):
     dates = [d["date"] for d in days]
     window = dates[-WINDOW:]
     out = {"strict": [], "loose": []}
+    track = {}
+    tdates = dates[-TRACK_DAYS:]
 
     for code, mk in uni.items():
         key = "t" if mk == "twse" else "o"
@@ -177,6 +180,10 @@ def build(stats=None):
             continue
         ind = indicators(rows)
         last_i = len(rows) - 1
+        track[code] = [names.get(code, ""), mk,
+                       [rows[pos[dd]][4] if dd in pos else None for dd in tdates],
+                       [rows[pos[dd]][1] if dd in pos else None for dd in tdates],
+                       [round(ind["rsi"][pos[dd]], 1) if dd in pos else None for dd in tdates]]
         hits = {"strict": [], "loose": []}
         for dd in window:
             i = pos.get(dd)
@@ -230,7 +237,8 @@ def build(stats=None):
         out[v].sort(key=lambda r: (r["last"], r["streak"]), reverse=True)
     return {"ready": True, "date": dates[-1], "window": window, "have": len(days),
             "universe": {"twse": N_TWSE, "otc": N_OTC, "found": len(uni)},
-            "strict": out["strict"], "loose": out["loose"], "stats": stats}
+            "strict": out["strict"], "loose": out["loose"], "stats": stats,
+            "track": {"ready": True, "date": dates[-1], "dates": tdates, "s": track}}
 
 
 def run(out_dir):
@@ -241,6 +249,8 @@ def run(out_dir):
     res = build(stats)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    track = res.pop("track", {"ready": False, "message": res.get("message", "")})
+    (out_dir / "track.json").write_text(json.dumps(track, ensure_ascii=False, separators=(",", ":")), "utf-8")
     (out_dir / "signals.json").write_text(json.dumps(res, ensure_ascii=False, separators=(",", ":")), "utf-8")
     if res.get("ready"):
         print(f"訊號股：{res['date']} 嚴格版 {len(res['strict'])} 檔、寬鬆版 {len(res['loose'])} 檔（歷史 {res['have']} 天）")

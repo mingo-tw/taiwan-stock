@@ -35,6 +35,7 @@
     <a href="#rank" data-tab="rank">籌碼排行</a>
     <a href="#value" data-tab="value">估值排行</a>
     <a href="#signal" data-tab="signal">訊號股</a>
+    <a href="#hold" data-tab="hold">我的持股<span id="hd-badge" class="badge" hidden></span></a>
   </nav>
 </header>
 
@@ -202,6 +203,33 @@
       <h3 class="mt">各種賣出方式比較（★ 為推薦）</h3>
       <div class="table-wrap"><table id="sg-stat"></table></div>
       <div id="sg-notes"></div>
+    </div>
+  </section>
+
+  <!-- 我的持股 -->
+  <section id="v-hold" class="view">
+    <div class="card-h outside"><h2 id="hd-title">我的持股</h2></div>
+    <div id="hd-alert" class="alert" hidden></div>
+    <div class="card">
+      <h2>持有中・等待賣出訊號</h2>
+      <div id="hd-empty" class="empty" hidden>還沒有紀錄。到「訊號股」頁面，在買進的股票右邊按「＋我買了」，或用下面的表單手動新增。</div>
+      <div class="table-wrap"><table id="hd-table"></table></div>
+      <p class="note">賣出訊號沿用回測的賣法：進場後，<b>RSI 回到 60</b>，或<b>從進場價賺到 10%</b>，先到先賣（以收盤判斷，隔天開盤賣）；最長持有 60 個交易日。沒有停損。報酬已扣手續費與證交稅。
+        你的持股只存在這台裝置的瀏覽器裡，換手機或換瀏覽器要重新輸入。</p>
+    </div>
+    <div class="card">
+      <h3>手動新增持股</h3>
+      <form class="search" id="hd-form">
+        <input id="hd-code" list="codes" inputmode="search" autocomplete="off" placeholder="代號或名稱，例如 2385">
+        <input id="hd-date" type="date" aria-label="買進日期">
+        <input id="hd-px" type="number" step="0.01" min="0" inputmode="decimal" placeholder="買進價（元）">
+        <button type="submit">新增</button>
+      </form>
+      <p class="note">日期與買進價請填你實際買進的。賣出訊號從買進日的隔天開始檢查。</p>
+    </div>
+    <div class="card">
+      <h2>已賣出紀錄</h2>
+      <div class="table-wrap"><table id="hd-done"></table></div>
     </div>
   </section>
 </main>

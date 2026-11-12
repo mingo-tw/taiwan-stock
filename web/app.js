@@ -482,14 +482,20 @@
         if (x.exit) return { t: `${x.exit.why === "RSI" ? "RSI 回到 60" : "已賺 10%"}（${mmdd(x.exit.d)}）可賣`, cls: "up" };
         return { t: `持有中・RSI ${nf(x.rsi_now, 1)}`, cls: "why" };
       };
-      table(tbl, ["股票", "訊號日", "最新收盤", "K / D", "RSI", "週 K", "5 日跌幅", "法人連買", "外資／投信／自營（張）", "進場（隔日開盤）", "至今報酬", "賣點"],
+      table(tbl, ["股票", "訊號日", "最新收盤", "K / D", "RSI", "週 K", "5 日跌幅", "法人連買", "外資／投信／自營（張）", "進場（隔日開盤）", "至今報酬", "賣點", "追蹤"],
         rows.map(x => ({ code: x.c, cells: [
           `${x.c} ${x.n}${x.m === "otc" ? "（櫃）" : ""}`, when(x), nf(x.now, 2), `${nf(x.K, 1)} / ${nf(x.D, 1)}`, nf(x.rsi, 1), nf(x.wk, 1),
           { t: signed(x.r5, 1) + "%", cls: cls(x.r5) }, `${x.streak} 天`,
           `${signed(x.F)} / ${signed(x.T)} / ${signed(x.Dl)}`,
           x.entry ? `${mmdd(x.entry.d)}　${nf(x.entry.px, 2)}` : "—",
-          x.entry ? { t: signed(x.ret, 1) + "%", cls: cls(x.ret) } : "—", sell(x)] })),
+          x.entry ? { t: signed(x.ret, 1) + "%", cls: cls(x.ret) } : "—", sell(x), ""] })),
         r => openStock(r.code));
+      $$("#sg-table tbody tr").forEach((tr, i) => {
+        const x = rows[i], held = getPos().open.some(p => p.c === x.c);
+        const b = el("button", "btn-s" + (held ? "" : " on"), held ? "已在持股" : "＋我買了"); b.type = "button"; b.disabled = held;
+        b.addEventListener("click", e => { e.stopPropagation(); addPos({ c: x.c, n: x.n, m: x.m, sig: x.first, entry: x.entry ? x.entry.d : null, px: x.entry ? x.entry.px : null }); drawSignals(); });
+        tr.lastElementChild.replaceChildren(b);
+      });
     }
     if (!ver) return;
     const ex = ver.exits, rec = ex.find(e => e.exit === "RSI 回到 60") || ex[0];
@@ -508,11 +514,104 @@
     $("#sg-notes").replaceChildren(...(st.notes || []).map(t => el("p", "note", t)));
   }
 
+
+  // ---------- 我的持股 ----------
+  const POS_KEY = "tw_positions_v1";
+  function getPos() {
+    try { const v = JSON.parse(localStorage.getItem(POS_KEY) || "null"); if (v && Array.isArray(v.open) && Array.isArray(v.done)) return v; } catch { /* */ }
+    return { open: [], done: [] };
+  }
+  function setPos(v) { try { localStorage.setItem(POS_KEY, JSON.stringify(v)); } catch { alert("這個瀏覽器不允許儲存，持股紀錄無法保存。"); } }
+  function addPos(p) {
+    const v = getPos();
+    if (v.open.some(x => x.c === p.c)) return;
+    v.open.push({ ...p, added: new Date().toISOString().slice(0, 10) });
+    setPos(v); drawHold();
+  }
+  // 成本：買賣各 0.1425% 手續費 + 賣出 0.3% 證交稅（與回測相同）
+  const netRet = (px, buy) => (px * (1 - 0.001425 - 0.003) / (buy * 1.001425) - 1) * 100;
+  const SELL_RSI = 60, TAKE = 0.10, MAXD = 60;
+  function holdInfo(p) {
+    const T = state.track;
+    if (!T || !T.ready || !T.s || !T.s[p.c]) return { why: "nodata" };
+    const [, , cl, op, rs] = T.s[p.c], dates = T.dates, last = dates.length - 1;
+    let ei = p.entry ? dates.indexOf(p.entry) : dates.findIndex(d => d > p.sig);
+    if (p.entry && ei < 0) ei = p.entry < dates[0] ? 0 : -1;
+    if (ei < 0 || ei > last) return { why: "pending" };
+    const buy = isNum(p.px) ? p.px : op[ei];
+    if (!isNum(buy)) return { why: "pending" };
+    let now = last; while (now > ei && !isNum(cl[now])) now--;
+    let hit = null;
+    for (let s = ei + 1; s <= now; s++) {
+      if (isNum(rs[s]) && rs[s] >= SELL_RSI) { hit = { why: "RSI", d: dates[s] }; break; }
+      if (isNum(cl[s]) && cl[s] / buy - 1 >= TAKE) { hit = { why: "TP", d: dates[s] }; break; }
+    }
+    const days = now - ei + 1;
+    return { buy, ei, entry: dates[ei], now: cl[now], nowDate: dates[now], ret: netRet(cl[now], buy), rsi: rs[now], toTp: (buy * (1 + TAKE) / cl[now] - 1) * 100,
+             days, hit, hitToday: !!hit && hit.d === dates[now], full: days >= MAXD };
+  }
+  function holdStatus(p, h) {
+    if (h.why === "nodata") return { t: "資料不足，暫時無法判斷", cls: "why", alert: false };
+    if (h.why === "pending") return { t: "等明天開盤買進後開始計算（進場價以你實際買進的為準，可在右邊「改進場價」修改）", cls: "why", alert: false };
+    const why = h.hit && (h.hit.why === "RSI" ? `RSI 回到 ${SELL_RSI}` : "已賺 10%");
+    if (h.hitToday) return { t: `🔔 今天收盤出現賣出訊號（${why}）→ 明天開盤賣`, cls: "up", alert: true };
+    if (h.hit) return { t: `⚠ ${mmdd(h.hit.d)} 已出現賣出訊號（${why}），還沒賣的話建議儘快處理`, cls: "up", alert: true };
+    if (h.full) return { t: `⏰ 已持有滿 ${MAXD} 個交易日（回測上限），建議出場`, cls: "up", alert: true };
+    return { t: `等待賣出訊號・RSI ${nf(h.rsi, 1)}（≥ ${SELL_RSI} 賣）・距停利還差 ${signed(h.toTp, 1)}%`, cls: "", alert: false };
+  }
+  function drawHold() {
+    const v = getPos(), T = state.track;
+    $("#hd-title").textContent = T && T.date ? `我的持股（資料日 ${T.date}）` : "我的持股";
+    $("#hd-empty").hidden = v.open.length > 0;
+    const infos = v.open.map(p => { const h = holdInfo(p); return { p, h, st: holdStatus(p, h) }; });
+    const alerts = infos.filter(x => x.st.alert);
+    $("#hd-badge").hidden = !alerts.length; $("#hd-badge").textContent = alerts.length;
+    document.title = (alerts.length ? `(${alerts.length}) ` : "") + "台股-脫離社畜研究社";
+    const box = $("#hd-alert");
+    box.hidden = !alerts.length;
+    if (alerts.length) box.textContent = "出現賣出訊號：" + alerts.map(x => `${x.p.c} ${x.p.n || ""}`).join("、");
+    const btn = (txt, fn) => { const b = el("button", "btn-s", txt); b.type = "button"; b.addEventListener("click", e => { e.stopPropagation(); fn(); }); return b; };
+    table($("#hd-table"), ["股票", "買進", "持有", "最新收盤", "至今報酬", "狀態", "操作"],
+      infos.map(({ p, h, st }) => ({ code: p.c, cells: [
+        `${p.c} ${p.n || ""}${p.m === "otc" ? "（櫃）" : ""}`,
+        h.buy ? `${mmdd(h.entry)}　${nf(h.buy, 2)}` : (p.entry ? `${mmdd(p.entry)}　${nf(p.px, 2)}` : `訊號 ${mmdd(p.sig)}`),
+        h.days ? `${h.days} 天` : "—", h.now ? nf(h.now, 2) : "—", h.now ? { t: signed(h.ret, 1) + "%", cls: cls(h.ret) } : "—",
+        { t: st.t, cls: "sell " + st.cls }, ""] })),
+      r => openStock(r.code));
+    $$("#hd-table tbody tr").forEach((tr, i) => {
+      const { p, h } = infos[i], td = tr.lastElementChild;
+      td.replaceChildren(
+        btn("已賣出", () => {
+          const def = h.now || "";
+          const s = prompt(`${p.c} ${p.n || ""} 的實際賣出價（元）？`, def);
+          const px = parseFloat(s); if (!isFinite(px) || px <= 0) return;
+          const cur = getPos(), k = cur.open.findIndex(x => x.c === p.c); if (k < 0) return;
+          const buy = h.buy || parseFloat(p.px);
+          cur.open.splice(k, 1);
+          cur.done.unshift({ c: p.c, n: p.n, m: p.m, entry: h.entry || p.entry, buy, sold: new Date().toISOString().slice(0, 10), sell: px, ret: isFinite(buy) ? netRet(px, buy) : null, days: h.days || null });
+          setPos(cur); drawHold(); drawSignals();
+        }),
+        btn("改進場價", () => {
+          const s = prompt(`${p.c} 的實際買進價（元）？`, h.buy || p.px || ""); const px = parseFloat(s);
+          if (!isFinite(px) || px <= 0) return;
+          const cur = getPos(), q = cur.open.find(x => x.c === p.c); if (q) { q.px = px; setPos(cur); drawHold(); }
+        }),
+        btn("刪除", () => {
+          if (!confirm(`刪除 ${p.c} ${p.n || ""} 的紀錄？（不會記入已賣出紀錄）`)) return;
+          const cur = getPos(); cur.open = cur.open.filter(x => x.c !== p.c); setPos(cur); drawHold(); drawSignals();
+        }));
+    });
+    table($("#hd-done"), ["股票", "買進", "賣出", "持有", "報酬"],
+      v.done.map(d => ({ code: d.c, cells: [`${d.c} ${d.n || ""}`, `${d.entry ? mmdd(d.entry) : "—"}　${nf(d.buy, 2)}`, `${mmdd(d.sold)}　${nf(d.sell, 2)}`,
+        d.days ? `${d.days} 天` : "—", isNum(d.ret) ? { t: signed(d.ret, 1) + "%", cls: cls(d.ret) } : "—"] })),
+      r => openStock(r.code));
+  }
+
   // ---------- 路由 ----------
   function route() {
     const h = location.hash.slice(1) || "overview";
     const [tab, code] = h.startsWith("stock-") ? ["stock", h.slice(6)] : [h, null];
-    const name = ["overview", "inst", "margin", "stock", "rank", "value", "signal"].includes(tab) ? tab : "overview";
+    const name = ["overview", "inst", "margin", "stock", "rank", "value", "signal", "hold"].includes(tab) ? tab : "overview";
     $$(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + name));
     $$("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === name));
     if (name === "stock") {
@@ -671,6 +770,16 @@
     });
     $("#rk-sel").addEventListener("change", drawRank);
     $("#vr-sort").addEventListener("change", drawValueRank);
+    $("#hd-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const code = resolve($("#hd-code").value), px = parseFloat($("#hd-px").value), date = $("#hd-date").value;
+      const st = state.stockMap.get(code);
+      if (!st) { alert("找不到這個股票代號，請從清單選一檔。"); return; }
+      if (!date || !isFinite(px) || px <= 0) { alert("請填買進日期和買進價。"); return; }
+      if (getPos().open.some(x => x.c === code)) { alert("這檔已經在持股裡了。"); return; }
+      addPos({ c: code, n: st[1], m: st[2], sig: date, entry: date, px });
+      $("#hd-code").value = ""; $("#hd-px").value = "";
+    });
     $$("#sg-ver button").forEach(b => b.addEventListener("click", () => {
       state.sver = b.dataset.v; $$("#sg-ver button").forEach(x => x.classList.toggle("on", x === b)); drawSignals();
     }));
@@ -683,6 +792,7 @@
     try {
       const [m, l, s] = await Promise.all([getJSON("data/market.json"), getJSON("data/latest.json"), getJSON("data/stocks.json")]);
       getJSON("data/valuation.json").then(v => { state.valuation = v; drawValueRank(); }).catch(() => {});
+      getJSON("data/track.json").then(v => { state.track = v; drawHold(); drawSignals(); }).catch(() => { state.track = { ready: false }; drawHold(); });
       getJSON("data/signals.json").then(v => { state.signals = v; drawSignals(); }).catch(() => { state.signals = { ready: false, message: "訊號資料讀取失敗，請稍後再試。", stats: null }; drawSignals(); });
       state.market = m; state.latest = l; state.stocks = s;
       s.forEach(x => state.stockMap.set(x[0], x));
@@ -692,7 +802,7 @@
     } catch (e) {
       $("#ov-tiles").replaceChildren(el("div", "empty", "資料讀取失敗：" + e.message));
     }
-    drawOverview(); drawInst(); drawMargin(); drawRank(); drawWatch();
+    drawOverview(); drawInst(); drawMargin(); drawRank(); drawWatch(); drawHold();
     route();
   }
   init();

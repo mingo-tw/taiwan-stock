@@ -176,3 +176,14 @@ td.why { color: var(--muted); font-size: 12px; }
 .cond { margin: 0 0 6px; padding-left: 20px; line-height: 1.7; }
 td.rec { font-weight: 600; }
 #sg-table td:first-child, #sg-table th:first-child { position: sticky; left: 0; background: var(--surface); }
+
+/* 我的持股 */
+.badge { display: inline-block; margin-left: 4px; min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--up); color: #fff; font-size: 11px; line-height: 16px; text-align: center; }
+.alert { background: color-mix(in srgb, var(--up) 12%, var(--surface)); border: 1px solid var(--up); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
+.btn-s { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.btn-s.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-s:disabled { color: var(--muted); cursor: default; }
+td.sell { font-weight: 600; white-space: normal; min-width: 180px; }
+#hd-form input[type=date], #hd-form input[type=number] { flex: 1 1 130px; }
+.btn-s + .btn-s { margin-left: 4px; }
+td.sell { text-align: left; }

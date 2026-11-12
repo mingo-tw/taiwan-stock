@@ -94,6 +94,10 @@ def test_end_to_end():
     assert b["m"] == "otc" and b["entry"]["d"] == dates[97].isoformat() and not b["today"], b
     assert b["exit"] and b["exit"]["why"] == "TP" and b["exit"]["d"] == dates[99].isoformat(), b
     assert b["ret"] > 10, b
+    tr = res["track"]
+    assert tr["ready"] and len(tr["dates"]) == signals.TRACK_DAYS and "1111" in tr["s"] and "0050" not in tr["s"], tr["dates"][:2]
+    name, mk, closes, opens, rsis = tr["s"]["6666"]
+    assert mk == "otc" and len(closes) == len(opens) == len(rsis) == signals.TRACK_DAYS and closes[-1] > 60 and rsis[-1] is not None
     for p in sorted((tmp / "data" / "ohlc").glob("*.json"))[:60]:
         p.unlink()
     assert signals.WINDOW == 4
