@@ -184,7 +184,8 @@ async function login(req, env) {
     "SELECT * FROM sessions WHERE key_id = ? AND ended_at IS NULL ORDER BY last_seen DESC").bind(k.id).all();
   // 同一台裝置（相同裝置編號）重新登入：直接接手自己的舊連線
   const devId = String(body.device_id || "").slice(0, 64) || null;
-  const busy = open.find(x => t - x.last_seen < s.idle_seconds && !(devId && x.device_id === devId));
+  // 「允許多裝置」的帳號（例如管理者自己）不限制同時登入
+  const busy = k.multi ? null : open.find(x => t - x.last_seen < s.idle_seconds && !(devId && x.device_id === devId));
   if (busy) {
     await logEvent(env, req, k.id, "denied_busy");
     const wait = s.idle_seconds - (t - busy.last_seen);
@@ -192,9 +193,10 @@ async function login(req, env) {
   }
   for (const x of open) {
     const same = devId && x.device_id === devId;
+    if (k.multi && !same) continue;  // 多裝置帳號：其他裝置保持登入
     await env.DB.prepare("UPDATE sessions SET ended_at = ?, end_reason = ? WHERE id = ?").bind(t, same ? "relogin" : "takeover", x.id).run();
   }
-  if (open.some(x => !(devId && x.device_id === devId))) await logEvent(env, req, k.id, "takeover");
+  if (!k.multi && open.some(x => !(devId && x.device_id === devId))) await logEvent(env, req, k.id, "takeover");
 
   const tok = randToken();
   await env.DB.prepare(
@@ -271,7 +273,7 @@ async function admin(req, env, url) {
   if (p === "/state" && req.method === "GET") {
     const t = now();
     const { results: keys } = await env.DB.prepare(`
-      SELECT k.id, k.key_hint, k.label, k.username, k.created_at, k.expires_at, k.disabled,
+      SELECT k.id, k.key_hint, k.label, k.username, k.created_at, k.expires_at, k.disabled, k.multi,
         (SELECT COUNT(*) FROM events e WHERE e.key_id = k.id AND e.type = 'denied_pin' AND e.ts > MAX(${now() - 3600}, COALESCE(k.pin_set_at, 0))) AS pin_fails,
         (SELECT MAX(ts) FROM events e WHERE e.key_id = k.id AND e.type = 'login') AS last_login,
         (SELECT COUNT(*) FROM events e WHERE e.key_id = k.id AND e.type = 'login') AS logins
@@ -279,9 +281,11 @@ async function admin(req, env, url) {
     const { results: sess } = await env.DB.prepare(
       "SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY last_seen DESC").all();
     for (const k of keys) {
-      const x = sess.find(z => z.key_id === k.id);
+      const mine = sess.filter(z => z.key_id === k.id);
+      const x = mine[0];
       k.session = x ? { device: x.device, ip: x.ip, country: x.country, started_at: x.started_at, last_seen: x.last_seen,
                         online: t - x.last_seen < s.idle_seconds } : null;
+      k.sessions = mine.map(z => ({ device: z.device, ip: z.ip, last_seen: z.last_seen, online: t - z.last_seen < s.idle_seconds }));
     }
     const { results: events } = await env.DB.prepare(`
       SELECT e.*, k.label, k.key_hint FROM events e LEFT JOIN keys k ON k.id = e.key_id
@@ -357,6 +361,9 @@ async function admin(req, env, url) {
         await env.DB.prepare("UPDATE keys SET pin_hash = ?, pin_set_at = ? WHERE id = ?").bind(await pinHash(k.username, pin), now(), id).run();
         return json({ ok: true, pin });
       }
+      case "multi":
+        await env.DB.prepare("UPDATE keys SET multi = ? WHERE id = ?").bind(body.value ? 1 : 0, id).run();
+        break;
       case "expire_at": {  // 指定到期時間（秒）；null = 不過期
         const at = body.expires_at === null ? null : Number(body.expires_at);
         if (at !== null && !(at > 0)) return json({ error: "日期不正確" }, 400);

@@ -143,11 +143,15 @@
     $("#idle").value = String(S.settings.idle_seconds);
     $("#upd").textContent = "更新於 " + fmt(S.now) + "・每 30 秒自動更新";
 
-    table($("#keys"), ["名稱", "狀態", "裝置", "IP", "最後活動", "最後登入", "登入次數", "到期", "操作"],
+    table($("#keys"), ["名稱", "狀態", "允許多裝置", "裝置", "IP", "最後活動", "最後登入", "登入次數", "到期", "操作"],
       S.keys.map(k => {
         const expired = k.expires_at && k.expires_at < S.now;
         const st = k.disabled ? pill("停用", "bad") : expired ? pill("過期", "bad") : k.pin_fails >= 10 ? pill("密碼錯太多・鎖住", "bad")
-          : k.session ? (k.session.online ? pill("使用中", "on") : pill("閒置", "idle")) : pill("未登入", "off");
+          : k.session ? (k.sessions.some(z => z.online)
+              ? pill(k.sessions.filter(z => z.online).length > 1 ? `使用中・${k.sessions.filter(z => z.online).length} 台` : "使用中", "on")
+              : pill("閒置", "idle")) : pill("未登入", "off");
+        const mc = el("input"); mc.type = "checkbox"; mc.checked = !!k.multi; mc.title = "打開後可同時在多台裝置登入";
+        mc.onchange = async () => { await call(`/keys/${k.id}`, { action: "multi", value: mc.checked }); load(); };
         const acts = el("div", "acts");
         if (k.session) acts.appendChild(btn("強制登出", () => act(k, "release", `把「${k.label}」登出？`)));
         if (k.username) acts.appendChild(btn("重設密碼", async () => {
@@ -158,8 +162,10 @@
         }));
         acts.appendChild(k.disabled ? btn("啟用", () => act(k, "enable")) : btn("停用", () => act(k, "disable", `停用「${k.label}」的 Key？`), "danger"));
         acts.appendChild(btn("刪除", () => act(k, "delete", `刪除「${k.label}」的 Key？刪除後無法復原。`), "danger"));
-        return [k.label || "—", st, k.session ? k.session.device : "—",
-          k.session ? `${k.session.ip}${k.session.country ? " (" + k.session.country + ")" : ""}` : "—",
+        const devs = k.sessions.length > 1 ? k.sessions.map(z => z.device).join("、") : (k.session ? k.session.device : "—");
+        const ips = k.sessions.length > 1 ? [...new Set(k.sessions.map(z => z.ip))].join("、")
+          : (k.session ? `${k.session.ip}${k.session.country ? " (" + k.session.country + ")" : ""}` : "—");
+        return [k.label || "—", st, mc, devs, ips,
           k.session ? ago(S.now - k.session.last_seen) : "—", fmt(k.last_login), String(k.logins),
           expCell(k), acts];
       }));
