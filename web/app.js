@@ -435,7 +435,8 @@
     rows.sort((a, b) => (ok(b) - ok(a)) || (ok(a) ? a[key] - b[key] : b.cap - a.cap));
     const nOk = rows.filter(ok).length;
     $("#vr-title").textContent = `估值排行（${V.date}）`;
-    $("#vr-count").textContent = `${nOk} / ${rows.length} 檔有數字`;
+    $("#vr-count").textContent = `顯示前 50 名（${rows.length} 檔中有 ${nOk} 檔有數字）`;
+    rows.splice(50);
     const gapKey = key === "gap_t" ? "gap_t" : "gap_f", fairKey = gapKey === "gap_t" ? "fair_t" : "fair_f";
     const pe = x => pos(x) ? nf(x, 1) : "—", otc = state.vmkt === "otc";
     const head = ["排名・股票", "收盤", "市值(億)", "目前本益比", "前瞻本益比"];

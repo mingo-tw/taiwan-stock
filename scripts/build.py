@@ -205,7 +205,7 @@ def main():
             "ratio": (r[SHO] / r[FIN] * 100) if r[FIN] and r[SHO] is not None and r[FIN] >= 1000 else None,
         })
 
-    def top(key, n=20, reverse=True):
+    def top(key, n=50, reverse=True):
         xs = [x for x in items if x.get(key) is not None and (x[key] > 0 if reverse else x[key] < 0)]
         return sorted(xs, key=lambda x: x[key], reverse=reverse)[:n]
 
