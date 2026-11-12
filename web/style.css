@@ -161,3 +161,13 @@ td.why { color: var(--muted); font-size: 12px; }
 .gate-msg.ok { color: var(--down); }
 .remember { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
 .remember input { width: 18px; height: 18px; padding: 0; }
+
+.move-banner { background: #fff4d6; color: #5c3d00; border-bottom: 1px solid #e8c56a; padding: 8px 14px; font-size: 13px; text-align: center; line-height: 1.6; }
+.move-banner a { color: #0b57d0; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .move-banner { background: #3a2c08; color: #f5dfa6; border-color: #6b5520; } .move-banner a { color: #8ab4f8; } }
+.move-url { font-size: 18px; font-weight: 650; word-break: break-all; color: var(--accent); }
+.warn-text { color: var(--up); }
+.btn-primary { display: block; text-align: center; padding: 12px; border-radius: 10px; background: var(--accent); color: #fff !important; font-weight: 600; text-decoration: none; }
+.gate-box .btn-ghost { color: var(--text); background: var(--surface); font-weight: 400;
+}
+.btn-ghost { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; font-size: 14px; }

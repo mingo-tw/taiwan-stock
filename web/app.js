@@ -518,6 +518,7 @@
     // 有記住帳號、而且不是自己按登出／被別台接手／被管理員登出 → 自動登入
     const auto = saved && !manual && !["takeover", "forced", "disabled", "expired", "deleted"].includes(reason);
     const p = new Promise(resolve => { auth.resolve = resolve; });
+    if (/[?&]apply=1/.test(location.search)) { showApply(true); return p; }  // 從舊網址公告連過來：直接開申請
     if (auto) setTimeout(() => $("#gate-btn").click(), 0);
     else setTimeout(() => (saved ? $("#gate-btn") : $("#gate-name")).focus(), 50);
     return p;
@@ -573,7 +574,26 @@
     return r.json();
   }
 
+  // ---------- 舊網址（GitHub Pages）搬家公告 ----------
+  const MOVE_DATE = "2026-11-19";  // 舊網站關閉日
+  function moveNotice() {
+    if (!/github\.io$/.test(location.hostname)) return false;
+    const [y, m, d] = MOVE_DATE.split("-").map(Number);
+    $$(".move-date").forEach(e => { e.textContent = `${y} 年 ${m} 月 ${d} 日`; });
+    const closed = Date.now() >= new Date(MOVE_DATE + "T00:00:00+08:00").getTime();
+    $("#move-banner").hidden = false;
+    $("#move-modal").hidden = false;
+    if (closed) {  // 已過關閉日：只顯示公告，不能再使用
+      $("#move-close").hidden = true;
+      $(".warn-text").textContent = "舊網站已關閉，請改用新網址。";
+      return true;
+    }
+    $("#move-close").addEventListener("click", () => { $("#move-modal").hidden = true; });
+    return false;
+  }
+
   async function init() {
+    if (moveNotice()) return;
     $("#gate-form").addEventListener("submit", submitGate);
     $("#apply-form").addEventListener("submit", submitApply);
     $("#to-apply").addEventListener("click", e => { e.preventDefault(); showApply(true); });
@@ -590,6 +610,7 @@
       e.preventDefault(); setSaved(null); $("#gate-name").value = ""; $("#gate-pin").value = ""; $("#forget-wrap").hidden = true;
     });
     await checkAuth();
+    if (/[?&]apply=1/.test(location.search) && !$("#apply-link").hidden) { $("#gate").hidden = false; showApply(true); }
     segs();
     $("#search").addEventListener("submit", e => { e.preventDefault(); openStock(resolve($("#q").value)); $("#q").blur(); });
     $("#st-star").addEventListener("click", () => {
