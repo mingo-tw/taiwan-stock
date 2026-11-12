@@ -92,6 +92,8 @@ jobs:
           npx wrangler deploy
           if [ -n "$ADMIN_PASSWORD" ]; then echo "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; fi
           if [ -n "$GH_DISPATCH_TOKEN" ]; then echo "$GH_DISPATCH_TOKEN" | npx wrangler secret put GH_DISPATCH_TOKEN; fi
+          # 舊名稱的 Worker（taiwan-stock.dnweimin.workers.dev）改名後移除，避免重複排程
+          npx wrangler delete --name taiwan-stock --force >/dev/null 2>&1 && echo "已移除舊的 taiwan-stock Worker" || true
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
