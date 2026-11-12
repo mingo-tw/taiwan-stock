@@ -44,7 +44,14 @@ export default {
           return new Response(res.body, { status: res.status, headers: h });
         }
       }
-      return env.ASSETS.fetch(req);
+      const res = await env.ASSETS.fetch(req);
+      // 網頁本身每次都檢查新版（JS/CSS 已帶版本號，可以照常快取）
+      if ((res.headers.get("Content-Type") || "").includes("text/html")) {
+        const h = new Headers(res.headers);
+        h.set("Cache-Control", "no-cache");
+        return new Response(res.body, { status: res.status, headers: h });
+      }
+      return res;
     } catch (e) {
       return json({ error: String(e && e.message || e) }, 500);
     }
