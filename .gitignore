@@ -1,3 +1,6 @@
 site/
 tests/_mock_root/
 __pycache__/
+node_modules/
+.wrangler/
+.dev.vars

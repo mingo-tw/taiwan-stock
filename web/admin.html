@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>台股籌碼追蹤・管理</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 16px 12px 40px; }
+  h1 { font-size: 20px; margin: 4px 0 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row input, .row select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .btn { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  .btn.ghost { background: var(--surface); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
+  .btn.sm { padding: 3px 8px; font-size: 12px; }
+  .btn.danger { color: var(--up); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); }
+  .pill.on { background: #1baf7a22; border-color: #1baf7a; color: #0f7a54; }
+  .pill.idle { background: #c9850022; border-color: #c98500; color: #8a5b00; }
+  .pill.off { color: var(--muted); }
+  .pill.bad { background: #e3494822; border-color: var(--up); color: var(--up); }
+  .newkey { font: 600 20px ui-monospace, Menlo, monospace; letter-spacing: 1px; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; }
+  .mode { font-weight: 650; }
+  td .acts { display: flex; gap: 4px; }
+  .warn { color: var(--up); }
+  #keys th, #keys td, #events th, #events td { text-align: left; }
+</style>
+</head>
+<body>
+<div id="gate" class="gate">
+  <form id="pw-form" class="gate-box">
+    <h2>管理頁</h2>
+    <input id="pw" type="password" placeholder="管理密碼" autocomplete="current-password">
+    <button type="submit">進入</button>
+    <p id="pw-msg" class="gate-msg"></p>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <div class="row" style="justify-content:space-between">
+    <h1>台股籌碼追蹤・管理</h1>
+    <div class="row"><a href="./" class="btn ghost sm">回網站</a><button class="btn ghost sm" id="out">離開</button></div>
+  </div>
+
+  <div class="card">
+    <h2>存取模式</h2>
+    <div class="row">
+      <span>目前：<span class="mode" id="mode"></span></span>
+      <button class="btn ghost" id="toggle"></button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>閒置多久後可換裝置：</label>
+      <select id="idle">
+        <option value="60">1 分鐘</option><option value="120">2 分鐘</option><option value="180">3 分鐘</option><option value="300">5 分鐘</option>
+        <option value="600">10 分鐘</option><option value="1800">30 分鐘</option>
+      </select>
+    </div>
+    <p class="note">「開放」：知道網址的人都能看。「需要 Key」：要輸入 Key 才能看資料，且一把 Key 同時只能一台裝置使用。</p>
+  </div>
+
+  <div class="card">
+    <h2>發新 Key</h2>
+    <form class="row" id="new-form">
+      <input id="label" placeholder="發給誰（例：小明）" maxlength="60" required>
+      <select id="days">
+        <option value="0">不過期</option><option value="7">7 天</option><option value="30">30 天</option>
+        <option value="90">90 天</option><option value="365">1 年</option>
+      </select>
+      <button class="btn" type="submit">產生 Key</button>
+    </form>
+    <div id="newkey-box" hidden style="margin-top:10px">
+      <div class="row"><span class="newkey" id="newkey"></span><button class="btn ghost" id="copy" type="button">複製</button></div>
+      <p class="note warn">這組 Key 只會顯示這一次，請現在複製並傳給對方。</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h2>Key 列表</h2><span class="muted small" id="upd"></span></div>
+    <div class="table-wrap"><table id="keys"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>登入紀錄（最近 300 筆）</h2>
+    <div class="table-wrap"><table id="events"></table></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+  let PW = ""; try { PW = sessionStorage.getItem("tws_admin") || ""; } catch {}
+  let S = null;
+
+  const fmt = t => t ? new Date(t * 1000).toLocaleString("zh-TW", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+  const ago = s => s < 60 ? `${s} 秒前` : s < 3600 ? `${Math.floor(s / 60)} 分鐘前` : s < 86400 ? `${Math.floor(s / 3600)} 小時前` : `${Math.floor(s / 86400)} 天前`;
+  const EV = { login: "登入", logout: "登出", takeover: "換裝置接手", forced: "被管理員登出", denied_busy: "被擋：使用中",
+    denied_invalid: "Key 錯誤", denied_disabled: "被擋：已停用", denied_expired: "被擋：已過期" };
+
+  async function call(path, body) {
+    const r = await fetch("api/admin" + path, { method: body ? "POST" : "GET",
+      headers: { "X-Admin-Password": PW, ...(body ? { "Content-Type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined });
+    const j = await r.json().catch(() => ({ error: "伺服器沒有回應（這個網址可能沒有後端）" }));
+    if (r.status === 401 || r.status === 429) { PW = ""; try { sessionStorage.removeItem("tws_admin"); } catch {} gate(j.error); throw new Error(j.error); }
+    if (!r.ok) { alert(j.error || "失敗"); throw new Error(j.error); }
+    return j;
+  }
+  function gate(msg) { $("#gate").hidden = false; $("#app").hidden = true; $("#pw-msg").textContent = msg || ""; }
+
+  function table(node, head, rows) {
+    const th = el("thead"), tr = el("tr"); head.forEach(h => tr.appendChild(el("th", null, h))); th.appendChild(tr);
+    const tb = el("tbody");
+    rows.forEach(r => { const row = el("tr"); r.forEach(c => { const td = el("td"); if (c instanceof Node) td.appendChild(c); else td.textContent = c ?? "—"; row.appendChild(td); }); tb.appendChild(row); });
+    node.replaceChildren(th, tb);
+  }
+  const pill = (t, c) => el("span", "pill " + c, t);
+  const btn = (t, fn, cls = "") => { const b = el("button", "btn ghost sm " + cls, t); b.type = "button"; b.onclick = fn; return b; };
+
+  async function load() {
+    S = await call("/state");
+    $("#gate").hidden = true; $("#app").hidden = false;
+    const key = S.settings.auth_mode === "key";
+    $("#mode").textContent = key ? "需要 Key" : "開放（不用 Key）";
+    $("#toggle").textContent = key ? "改成開放" : "啟用 Key 登入";
+    $("#idle").value = String(S.settings.idle_seconds);
+    $("#upd").textContent = "更新於 " + fmt(S.now) + "・每 30 秒自動更新";
+
+    table($("#keys"), ["發給", "Key", "狀態", "裝置", "IP", "最後活動", "最後登入", "登入次數", "到期", "操作"],
+      S.keys.map(k => {
+        const expired = k.expires_at && k.expires_at < S.now;
+        const st = k.disabled ? pill("停用", "bad") : expired ? pill("過期", "bad")
+          : k.session ? (k.session.online ? pill("使用中", "on") : pill("閒置", "idle")) : pill("未登入", "off");
+        const acts = el("div", "acts");
+        if (k.session) acts.appendChild(btn("強制登出", () => act(k, "release", `把「${k.label}」登出？`)));
+        acts.appendChild(k.disabled ? btn("啟用", () => act(k, "enable")) : btn("停用", () => act(k, "disable", `停用「${k.label}」的 Key？`), "danger"));
+        acts.appendChild(btn("刪除", () => act(k, "delete", `刪除「${k.label}」的 Key？刪除後無法復原。`), "danger"));
+        return [k.label || "—", "…" + k.key_hint, st, k.session ? k.session.device : "—",
+          k.session ? `${k.session.ip}${k.session.country ? " (" + k.session.country + ")" : ""}` : "—",
+          k.session ? ago(S.now - k.session.last_seen) : "—", fmt(k.last_login), String(k.logins),
+          k.expires_at ? fmt(k.expires_at) : "不過期", acts];
+      }));
+    table($("#events"), ["時間", "發給", "事件", "裝置", "IP"],
+      S.events.map(e => [fmt(e.ts), e.label || (e.key_hint ? "…" + e.key_hint : "—"),
+        e.type.startsWith("denied") ? pill(EV[e.type] || e.type, "bad") : (EV[e.type] || e.type), e.device,
+        `${e.ip || ""}${e.country ? " (" + e.country + ")" : ""}`]));
+  }
+  async function act(k, action, confirmMsg) {
+    if (confirmMsg && !confirmBox(confirmMsg)) return;
+    await call(`/keys/${k.id}`, { action }); load();
+  }
+  // 部分環境不允許 confirm()，失敗時直接執行
+  function confirmBox(m) { try { return window.confirm(m); } catch { return true; } }
+
+  $("#pw-form").onsubmit = async e => {
+    e.preventDefault(); PW = $("#pw").value; $("#pw").value = "";
+    try { sessionStorage.setItem("tws_admin", PW); } catch {}
+    load().catch(() => {});
+  };
+  $("#out").onclick = () => { PW = ""; try { sessionStorage.removeItem("tws_admin"); } catch {} gate(""); };
+  $("#toggle").onclick = async () => {
+    const to = S.settings.auth_mode === "key" ? "open" : "key";
+    const n = S.keys.filter(k => !k.disabled).length;
+    if (to === "key" && n === 0 && !confirmBox("目前沒有可用的 Key，啟用後所有人（包括你）都要有 Key 才能看。確定啟用？")) return;
+    await call("/settings", { auth_mode: to }); load();
+  };
+  $("#idle").onchange = async () => { await call("/settings", { idle_seconds: Number($("#idle").value) }); load(); };
+  $("#new-form").onsubmit = async e => {
+    e.preventDefault();
+    const r = await call("/keys", { label: $("#label").value.trim(), days: Number($("#days").value) });
+    $("#newkey").textContent = r.key; $("#newkey-box").hidden = false; $("#label").value = ""; load();
+  };
+  $("#copy").onclick = async () => {
+    try { await navigator.clipboard.writeText($("#newkey").textContent); $("#copy").textContent = "已複製"; }
+    catch { $("#copy").textContent = "請手動選取複製"; }
+    setTimeout(() => { $("#copy").textContent = "複製"; }, 2000);
+  };
+  setInterval(() => { if (PW && !$("#app").hidden) load().catch(() => {}); }, 30000);
+  if (PW) load().catch(() => {}); else gate("");
+})();
+</script>
+</body>
+</html>

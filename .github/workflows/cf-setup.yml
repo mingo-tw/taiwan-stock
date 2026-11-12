@@ -1,0 +1,45 @@
+name: Cloudflare 一次性設定
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: 檢查設定
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::缺少 CLOUDFLARE_API_TOKEN"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::缺少 CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          [ -n "$ADMIN_PASSWORD" ] || { echo "::error::缺少 ADMIN_PASSWORD"; exit 1; }
+      - run: npm ci --no-audit --no-fund
+      - name: 建立 D1 資料庫（已存在就沿用）
+        run: |
+          id=$(npx wrangler d1 list --json | python3 -c "import sys,json;print(next((d['uuid'] for d in json.load(sys.stdin) if d['name']=='taiwan-stock-auth'),''))")
+          if [ -z "$id" ]; then
+            npx wrangler d1 create taiwan-stock-auth
+            id=$(npx wrangler d1 list --json | python3 -c "import sys,json;print(next(d['uuid'] for d in json.load(sys.stdin) if d['name']=='taiwan-stock-auth'))")
+          fi
+          echo "D1 id: $id"
+          sed -i "s/^database_id = .*/database_id = \"$id\"/" wrangler.toml
+          npx wrangler d1 execute taiwan-stock-auth --remote --file worker/schema.sql
+      - run: pip install requests && python scripts/build.py
+      - name: 部署 Worker 並設定管理密碼
+        run: |
+          npx wrangler deploy
+          echo "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
+      - name: 把資料庫 ID 存回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wrangler.toml
+          git diff --cached --quiet || git commit -m "設定 Cloudflare D1 資料庫 ID"
+          git pull --rebase -q origin main && git push

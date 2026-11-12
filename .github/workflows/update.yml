@@ -18,7 +18,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths: ["web/**", "scripts/build.py"]
+    paths: ["web/**", "scripts/build.py", "worker/**", "wrangler.toml"]
 
 permissions:
   contents: write
@@ -75,6 +75,20 @@ jobs:
 
       - name: 建置網站
         run: python scripts/build.py
+
+      - name: 部署到 Cloudflare（有設定才會跑）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || grep -q '00000000-0000' wrangler.toml; then
+            echo "尚未設定 Cloudflare，略過"; exit 0
+          fi
+          npm ci --no-audit --no-fund
+          npx wrangler d1 execute taiwan-stock-auth --remote --file worker/schema.sql
+          npx wrangler deploy
+          if [ -n "$ADMIN_PASSWORD" ]; then echo "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; fi
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

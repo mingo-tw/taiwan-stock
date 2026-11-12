@@ -1,0 +1,33 @@
+CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+INSERT OR IGNORE INTO settings (k, v) VALUES ('auth_mode', 'open'), ('idle_seconds', '180');
+
+CREATE TABLE IF NOT EXISTS keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_hash TEXT NOT NULL UNIQUE,
+  key_hint TEXT NOT NULL,          -- 末 4 碼，方便辨識
+  label TEXT NOT NULL DEFAULT '',  -- 發給誰
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER,              -- NULL = 不過期
+  disabled INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_id INTEGER NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  device TEXT, ip TEXT, country TEXT,
+  started_at INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  ended_at INTEGER,
+  end_reason TEXT                  -- logout / takeover / forced / disabled
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_key ON sessions (key_id, ended_at);
+
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  key_id INTEGER,
+  type TEXT NOT NULL,              -- login / denied_busy / denied_invalid / logout / takeover / forced / expired_key
+  device TEXT, ip TEXT, country TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);

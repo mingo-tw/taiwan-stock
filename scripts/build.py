@@ -8,6 +8,7 @@
 並把 web/ 的前端檔案複製過去。
 """
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -17,6 +18,7 @@ WEB = ROOT / "web"
 OUT = ROOT / "site"
 KEEP_DAYS_MARKET = 250
 KEEP_DAYS_STOCK = 120
+OTC_CODE = re.compile(r"^(\d{4}|00\d{2,4}[A-Z]?)$")
 
 # 快照中個股陣列的欄位位置
 NAME, MKT, CLOSE, CHG, VOL, FOR, TRU, DEA, TOT, FIN, FINP, SHO, SHOP = range(13)
@@ -118,6 +120,8 @@ def main():
     hist, names = {}, {}
     for d in days[-KEEP_DAYS_STOCK:]:
         for code, r in d.get("stocks", {}).items():
+            if r[MKT] == "otc" and not OTC_CODE.match(code):  # 早期快照誤收的上櫃權證
+                continue
             names[code] = (r[NAME], r[MKT])
             hist.setdefault(code, []).append([
                 d["date"], r[CLOSE], r[CHG], r[VOL], r[FOR], r[TRU], r[DEA], r[TOT],

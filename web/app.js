@@ -276,9 +276,7 @@
     $("#q").value = code;
     $("#st-empty").textContent = "載入中…"; $("#st-empty").hidden = false; $("#st-body").hidden = true;
     try {
-      const r = await fetch(`data/s/${encodeURIComponent(code)}.json`, { cache: "no-cache" });
-      if (!r.ok) throw new Error(r.status);
-      state.cur = await r.json();
+      state.cur = await getJSON(`data/s/${encodeURIComponent(code)}.json`);
     } catch {
       state.cur = null;
       $("#st-empty").textContent = `找不到「${code}」。上市股票都查得到；上櫃股票只有在自動抓取成功的日子才有資料。`;
@@ -474,10 +472,67 @@
     hideTip();
   }
 
+  // ---------- 登入（key 模式才會啟用；GitHub Pages 或開放模式下不影響） ----------
+  const auth = { mode: "open", timer: null };
+  const REASON = { takeover: "這把 Key 已在其他裝置登入，你已被登出。", forced: "管理員已將你登出。",
+    disabled: "此 Key 已停用。", expired: "此 Key 已過期。", deleted: "此 Key 已被刪除。", logout: "" };
+  async function api(path, body) {
+    const r = await fetch(path, { method: body ? "POST" : "GET", credentials: "same-origin",
+      headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    let j = {}; try { j = await r.json(); } catch { /* 非 JSON */ }
+    return { status: r.status, ...j };
+  }
+  async function checkAuth() {
+    try {
+      const r = await fetch("api/me", { credentials: "same-origin", cache: "no-store" });
+      if (!r.ok || !(r.headers.get("Content-Type") || "").includes("json")) return true; // 沒有後端（GitHub Pages）
+      const j = await r.json();
+      auth.mode = j.mode;
+      if (j.mode !== "key") return true;
+      $("#logout").hidden = false;
+      if (j.authed) { startHeartbeat(); return true; }
+      return showGate(REASON[j.reason] || "");
+    } catch { return true; }
+  }
+  function showGate(msg) {
+    stopHeartbeat();
+    $("#gate").hidden = false; $("#gate-msg").textContent = msg || "";
+    setTimeout(() => $("#gate-key").focus(), 50);
+    return new Promise(resolve => { auth.resolve = resolve; });
+  }
+  async function submitGate(e) {
+    e.preventDefault();
+    const btn = $("#gate-btn"); btn.disabled = true; $("#gate-msg").textContent = "";
+    const r = await api("api/login", { key: $("#gate-key").value });
+    btn.disabled = false;
+    if (r.ok) {
+      $("#gate").hidden = true; $("#gate-key").value = "";
+      startHeartbeat();
+      if (auth.resolve) { const f = auth.resolve; auth.resolve = null; f(true); }
+      else location.reload();
+    } else $("#gate-msg").textContent = r.error || "登入失敗";
+  }
+  async function beat() {
+    if (document.visibilityState !== "visible") return;
+    const r = await api("api/heartbeat", {}).catch(() => null);
+    if (r && r.status === 401) showGate(REASON[r.reason] || "請重新登入。");
+  }
+  function startHeartbeat() { stopHeartbeat(); auth.timer = setInterval(beat, 60000); }
+  function stopHeartbeat() { if (auth.timer) clearInterval(auth.timer); auth.timer = null; }
+  document.addEventListener("visibilitychange", () => { if (auth.mode === "key" && auth.timer) beat(); });
+
   // ---------- 啟動 ----------
-  async function getJSON(p) { const r = await fetch(p, { cache: "no-cache" }); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); }
+  async function getJSON(p) {
+    const r = await fetch(p, { cache: "no-cache", credentials: "same-origin" });
+    if (r.status === 401 && auth.mode === "key") { const j = await r.json().catch(() => ({})); await showGate(REASON[j.reason] || "請重新登入。"); return getJSON(p); }
+    if (!r.ok) throw new Error(p + " " + r.status);
+    return r.json();
+  }
 
   async function init() {
+    $("#gate-form").addEventListener("submit", submitGate);
+    $("#logout").addEventListener("click", async () => { await api("api/logout", {}); location.reload(); });
+    await checkAuth();
     segs();
     $("#search").addEventListener("submit", e => { e.preventDefault(); openStock(resolve($("#q").value)); $("#q").blur(); });
     $("#st-star").addEventListener("click", () => {

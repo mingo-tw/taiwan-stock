@@ -146,3 +146,14 @@ footer { text-align: center; padding: 8px 16px calc(24px + env(safe-area-inset-b
 .chart .ref-l { fill: var(--text-2); font-size: 11px; }
 td.pos-tag { font-size: 12px; color: var(--text-2); }
 td.why { color: var(--muted); font-size: 12px; }
+
+.linkbtn { margin-left: auto; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.gate { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center; padding: 20px; }
+.gate-box { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; display: grid; gap: 10px; }
+.gate-box h2 { margin: 0; font-size: 20px; }
+.gate-box p { margin: 0; }
+.gate-box input { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); font-size: 17px; letter-spacing: 1px; text-transform: uppercase; }
+.gate-box button { padding: 12px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; font-size: 16px; cursor: pointer; }
+.gate-box button:disabled { opacity: .6; }
+.gate-msg { color: var(--up); font-size: 13px; min-height: 1em; }
+[hidden] { display: none !important; }
