@@ -8,6 +8,19 @@ const COOKIE = "tws_s";
 const now = () => Math.floor(Date.now() / 1000);
 
 export default {
+  // Cloudflare 排程（準時）：通知 GitHub Actions 開始抓資料。GitHub 自己的排程常延遲好幾小時。
+  async scheduled(event, env, ctx) {
+    if (!env.GH_DISPATCH_TOKEN) return;
+    ctx.waitUntil(fetch("https://api.github.com/repos/mingo-tw/taiwan-stock/actions/workflows/update.yml/dispatches", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`, Accept: "application/vnd.github+json",
+        "User-Agent": "taiwan-stock-cron", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ref: "main", inputs: { days: "3" } }),
+    }).then(r => console.log("dispatch", r.status)));
+  },
+
   async fetch(req, env) {
     const url = new URL(req.url);
     const p = url.pathname;

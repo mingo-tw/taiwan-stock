@@ -81,6 +81,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || grep -q '00000000-0000' wrangler.toml; then
             echo "尚未設定 Cloudflare，略過"; exit 0
@@ -90,10 +91,12 @@ jobs:
           bash worker/migrate.sh --remote
           npx wrangler deploy
           if [ -n "$ADMIN_PASSWORD" ]; then echo "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; fi
+          if [ -n "$GH_DISPATCH_TOKEN" ]; then echo "$GH_DISPATCH_TOKEN" | npx wrangler secret put GH_DISPATCH_TOKEN; fi
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
       - id: deploy
+        continue-on-error: true
         uses: actions/deploy-pages@v4
