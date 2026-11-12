@@ -46,7 +46,7 @@ def test_indicators():
 
 def test_end_to_end():
     """假資料：1111 一路下跌到最後一天（最後一天才出現訊號）；6666（上櫃）在倒數第 3 天出現訊號，
-    隔天持平、再大漲 15%（應判定已到停利賣點）。00 開頭 ETF 不入選。"""
+    隔天持平、再大漲 15%；視窗為最近 4 個交易日（應判定已到停利賣點）。00 開頭 ETF 不入選。"""
     tmp = Path(tempfile.mkdtemp())
     (tmp / "data" / "ohlc").mkdir(parents=True)
     (tmp / "data" / "raw").mkdir(parents=True)
@@ -88,14 +88,15 @@ def test_end_to_end():
     assert "0050" not in codes["strict"] + codes["loose"], "ETF 不應入選"
     assert "1111" in codes["strict"] and "6666" in codes["strict"], codes
     a = next(r for r in res["strict"] if r["c"] == "1111")
-    assert a["today"] and a["first"] == dates[97].isoformat() and a["entry"]["d"] == dates[98].isoformat(), a
+    assert a["today"] and a["first"] == dates[96].isoformat() and a["entry"]["d"] == dates[97].isoformat(), a
     assert a["streak"] >= 3 and a["pe"] == 12.3 and a["ret"] < 0 and a["exit"] is None, a
     b = next(r for r in res["strict"] if r["c"] == "6666")
-    assert b["m"] == "otc" and b["entry"]["d"] == dates[98].isoformat() and not b["today"], b
+    assert b["m"] == "otc" and b["entry"]["d"] == dates[97].isoformat() and not b["today"], b
     assert b["exit"] and b["exit"]["why"] == "TP" and b["exit"]["d"] == dates[99].isoformat(), b
     assert b["ret"] > 10, b
     for p in sorted((tmp / "data" / "ohlc").glob("*.json"))[:60]:
         p.unlink()
+    assert signals.WINDOW == 4
     assert signals.build()["ready"] is False
     print("OK 端到端與資料不足")
 

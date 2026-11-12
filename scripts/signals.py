@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OHLC = ROOT / "data" / "ohlc"
 RAW = ROOT / "data" / "raw"
-WINDOW = 3          # 看最近幾個交易日的訊號
+WINDOW = 4          # 看最近幾個交易日的訊號（今天往前算 4 個交易日，含今天）
 MIN_ROWS = 60       # 至少要有這麼多天的資料才算指標
 KEEP = 160          # 只讀最近這麼多個交易日
 N_TWSE, N_OTC = 200, 100

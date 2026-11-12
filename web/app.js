@@ -475,7 +475,7 @@
     } else {
       $("#sg-list-h").textContent = `近 ${S.window.length} 個交易日（${mmdd(S.window[0])}～${mmdd(S.window[S.window.length - 1])}）出現訊號的股票・${rows.length} 檔`;
       msg.hidden = rows.length > 0;
-      msg.textContent = "近 3 個交易日沒有股票符合這個版本的條件。";
+      msg.textContent = "近 4 個交易日沒有股票符合這個版本的條件。";
       const when = x => (x.first === x.last ? mmdd(x.first) : `${mmdd(x.first)}～${mmdd(x.last)}`) + (x.today ? "" : "（今日已不符）");
       const sell = x => {
         if (!x.entry) return { t: "明天開盤買進", cls: "why" };
