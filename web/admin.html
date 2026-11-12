@@ -58,43 +58,41 @@
         <option value="600">10 分鐘</option><option value="1800">30 分鐘</option>
       </select>
     </div>
-    <p class="note">「開放」：知道網址的人都能看。「需要 Key」：要輸入 Key 才能看資料，且一把 Key 同時只能一台裝置使用。</p>
+    <p class="note">「開放」：知道網址的人都能看。「需要登入」：要用名稱＋4 位數密碼登入才能看資料，且一個帳號同時只能一台裝置使用。</p>
   </div>
 
   <div class="card">
-    <div class="row" style="justify-content:space-between"><h2>Key 申請</h2><span class="muted small" id="app-count"></span></div>
+    <div class="row" style="justify-content:space-between"><h2>帳號申請</h2><span class="muted small" id="app-count"></span></div>
     <div class="row" style="margin-bottom:8px">
-      <label>核發效期：</label>
+      <label>核准後的效期：</label>
       <select id="ap-days">
         <option value="30">30 天</option><option value="90">90 天</option><option value="180">半年</option>
         <option value="365" selected>1 年</option><option value="0">不過期</option>
       </select>
     </div>
     <div class="table-wrap"><table id="apps"></table></div>
-    <div id="apkey-box" hidden style="margin-top:10px">
-      <div class="row"><span id="apkey-who"></span><span class="newkey" id="apkey"></span><button class="btn ghost" id="apcopy" type="button">複製</button></div>
-      <p class="note warn">這組 Key 只會顯示這一次，請現在複製並傳給對方。</p>
-    </div>
+    <p class="note" id="ap-done" hidden></p>
   </div>
 
   <div class="card">
-    <h2>手動發新 Key</h2>
+    <h2>直接新增使用者</h2>
     <form class="row" id="new-form">
-      <input id="label" placeholder="發給誰（例：小明）" maxlength="60" required>
+      <input id="label" placeholder="名稱（登入用）" maxlength="40" required>
+      <input id="newpin" placeholder="4 位數密碼（留空自動產生）" maxlength="4" inputmode="numeric" style="width:200px">
       <select id="days">
         <option value="365" selected>1 年</option><option value="180">半年</option><option value="90">90 天</option>
         <option value="30">30 天</option><option value="7">7 天</option><option value="0">不過期</option>
       </select>
-      <button class="btn" type="submit">產生 Key</button>
+      <button class="btn" type="submit">新增</button>
     </form>
     <div id="newkey-box" hidden style="margin-top:10px">
-      <div class="row"><span class="newkey" id="newkey"></span><button class="btn ghost" id="copy" type="button">複製</button></div>
-      <p class="note warn">這組 Key 只會顯示這一次，請現在複製並傳給對方。</p>
+      <div class="row"><span class="newkey" id="newkey" style="font-size:16px"></span><button class="btn ghost" id="copy" type="button">複製</button></div>
+      <p class="note warn">請把名稱和密碼告訴對方。密碼之後無法再查看，忘記的話可以按「重設密碼」。</p>
     </div>
   </div>
 
   <div class="card">
-    <div class="row" style="justify-content:space-between"><h2>Key 列表</h2><span class="muted small" id="upd"></span></div>
+    <div class="row" style="justify-content:space-between"><h2>使用者</h2><span class="muted small" id="upd"></span></div>
     <div class="table-wrap"><table id="keys"></table></div>
   </div>
 
@@ -114,7 +112,7 @@
   const fmt = t => t ? new Date(t * 1000).toLocaleString("zh-TW", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
   const ago = s => s < 60 ? `${s} 秒前` : s < 3600 ? `${Math.floor(s / 60)} 分鐘前` : s < 86400 ? `${Math.floor(s / 3600)} 小時前` : `${Math.floor(s / 86400)} 天前`;
   const EV = { login: "登入", logout: "登出", takeover: "換裝置接手", forced: "被管理員登出", denied_busy: "被擋：使用中",
-    denied_invalid: "Key 錯誤", denied_disabled: "被擋：已停用", denied_expired: "被擋：已過期" };
+    denied_invalid: "名稱或密碼錯誤", denied_pin: "密碼錯誤", denied_disabled: "被擋：已停用", denied_expired: "被擋：已過期" };
 
   async function call(path, body) {
     const r = await fetch("api/admin" + path, { method: body ? "POST" : "GET",
@@ -140,27 +138,33 @@
     S = await call("/state");
     $("#gate").hidden = true; $("#app").hidden = false;
     const key = S.settings.auth_mode === "key";
-    $("#mode").textContent = key ? "需要 Key" : "開放（不用 Key）";
-    $("#toggle").textContent = key ? "改成開放" : "啟用 Key 登入";
+    $("#mode").textContent = key ? "需要登入" : "開放（不用登入）";
+    $("#toggle").textContent = key ? "改成開放" : "啟用登入";
     $("#idle").value = String(S.settings.idle_seconds);
     $("#upd").textContent = "更新於 " + fmt(S.now) + "・每 30 秒自動更新";
 
-    table($("#keys"), ["發給", "Key", "狀態", "裝置", "IP", "最後活動", "最後登入", "登入次數", "到期", "操作"],
+    table($("#keys"), ["名稱", "狀態", "裝置", "IP", "最後活動", "最後登入", "登入次數", "到期", "操作"],
       S.keys.map(k => {
         const expired = k.expires_at && k.expires_at < S.now;
-        const st = k.disabled ? pill("停用", "bad") : expired ? pill("過期", "bad")
+        const st = k.disabled ? pill("停用", "bad") : expired ? pill("過期", "bad") : k.pin_fails >= 10 ? pill("密碼錯太多・鎖住", "bad")
           : k.session ? (k.session.online ? pill("使用中", "on") : pill("閒置", "idle")) : pill("未登入", "off");
         const acts = el("div", "acts");
         if (k.session) acts.appendChild(btn("強制登出", () => act(k, "release", `把「${k.label}」登出？`)));
+        if (k.username) acts.appendChild(btn("重設密碼", async () => {
+          if (!confirmBox(`幫「${k.label}」重設一組新的 4 位數密碼？`)) return;
+          const r = await call(`/keys/${k.id}`, { action: "reset_pin" });
+          $("#newkey").textContent = `名稱：${k.username}　新密碼：${r.pin}`; $("#newkey-box").hidden = false;
+          $("#newkey-box").scrollIntoView({ behavior: "smooth", block: "center" }); load();
+        }));
         acts.appendChild(k.disabled ? btn("啟用", () => act(k, "enable")) : btn("停用", () => act(k, "disable", `停用「${k.label}」的 Key？`), "danger"));
         acts.appendChild(btn("刪除", () => act(k, "delete", `刪除「${k.label}」的 Key？刪除後無法復原。`), "danger"));
-        return [k.label || "—", "…" + k.key_hint, st, k.session ? k.session.device : "—",
+        return [k.label || "—", st, k.session ? k.session.device : "—",
           k.session ? `${k.session.ip}${k.session.country ? " (" + k.session.country + ")" : ""}` : "—",
           k.session ? ago(S.now - k.session.last_seen) : "—", fmt(k.last_login), String(k.logins),
           expCell(k), acts];
       }));
     drawApps();
-    table($("#events"), ["時間", "發給", "事件", "裝置", "IP"],
+    table($("#events"), ["時間", "名稱", "事件", "裝置", "IP"],
       S.events.map(e => [fmt(e.ts), e.label || (e.key_hint ? "…" + e.key_hint : "—"),
         e.type.startsWith("denied") ? pill(EV[e.type] || e.type, "bad") : (EV[e.type] || e.type), e.device,
         `${e.ip || ""}${e.country ? " (" + e.country + ")" : ""}`]));
@@ -190,14 +194,14 @@
       S.apps.map(a => {
         const acts = el("div", "acts");
         if (a.status === "pending") {
-          acts.appendChild(btn("核發 Key", async () => {
-            const r = await call(`/applications/${a.id}`, { action: "approve", days: Number($("#ap-days").value) });
-            $("#apkey-who").textContent = `給 ${a.name}：`; $("#apkey").textContent = r.key; $("#apkey-box").hidden = false; load();
+          acts.appendChild(btn("核准", async () => {
+            await call(`/applications/${a.id}`, { action: "approve", days: Number($("#ap-days").value) });
+            $("#ap-done").textContent = `已核准「${a.name}」。請通知對方用自己的名稱和申請時設的密碼登入。`; $("#ap-done").hidden = false; load();
           }));
           acts.appendChild(btn("拒絕", async () => { await call(`/applications/${a.id}`, { action: "reject" }); load(); }, "danger"));
         }
         acts.appendChild(btn("刪除", async () => { if (confirmBox(`刪除「${a.name}」的申請紀錄？`)) { await call(`/applications/${a.id}`, { action: "delete" }); load(); } }, "danger"));
-        const st = a.status === "approved" ? pill(`已核發 …${a.key_hint || ""}`, "on") : ST[a.status];
+        const st = a.status === "approved" ? pill("已核准", "on") : ST[a.status];
         return [fmt(a.created_at), a.name, a.note || "—", a.device, `${a.ip || ""}${a.country ? " (" + a.country + ")" : ""}`, st, acts];
       }));
   }
@@ -218,24 +222,19 @@
   $("#toggle").onclick = async () => {
     const to = S.settings.auth_mode === "key" ? "open" : "key";
     const n = S.keys.filter(k => !k.disabled).length;
-    if (to === "key" && n === 0 && !confirmBox("目前沒有可用的 Key，啟用後所有人（包括你）都要有 Key 才能看。確定啟用？")) return;
+    if (to === "key" && n === 0 && !confirmBox("目前沒有任何使用者，啟用後所有人（包括你）都要登入才能看。確定啟用？")) return;
     await call("/settings", { auth_mode: to }); load();
   };
   $("#idle").onchange = async () => { await call("/settings", { idle_seconds: Number($("#idle").value) }); load(); };
   $("#new-form").onsubmit = async e => {
     e.preventDefault();
-    const r = await call("/keys", { label: $("#label").value.trim(), days: Number($("#days").value) });
-    $("#newkey").textContent = r.key; $("#newkey-box").hidden = false; $("#label").value = ""; load();
+    const r = await call("/keys", { name: $("#label").value.trim(), pin: $("#newpin").value.trim(), days: Number($("#days").value) });
+    $("#newkey").textContent = `名稱：${r.name}　密碼：${r.pin}`; $("#newkey-box").hidden = false; $("#label").value = ""; $("#newpin").value = ""; load();
   };
   $("#copy").onclick = async () => {
     try { await navigator.clipboard.writeText($("#newkey").textContent); $("#copy").textContent = "已複製"; }
     catch { $("#copy").textContent = "請手動選取複製"; }
     setTimeout(() => { $("#copy").textContent = "複製"; }, 2000);
-  };
-  $("#apcopy").onclick = async () => {
-    try { await navigator.clipboard.writeText($("#apkey").textContent); $("#apcopy").textContent = "已複製"; }
-    catch { $("#apcopy").textContent = "請手動選取複製"; }
-    setTimeout(() => { $("#apcopy").textContent = "複製"; }, 2000);
   };
   setInterval(() => { if (PW && !$("#app").hidden) load().catch(() => {}); }, 30000);
   if (PW) load().catch(() => {}); else gate("");

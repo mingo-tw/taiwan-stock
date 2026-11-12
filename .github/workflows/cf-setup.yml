@@ -41,6 +41,7 @@ jobs:
           echo "D1 id: $id"
           sed -i "s/^database_id = .*/database_id = \"$id\"/" wrangler.toml
           npx wrangler d1 execute taiwan-stock-auth --remote --file worker/schema.sql
+          bash worker/migrate.sh --remote
       - run: pip install requests && python scripts/build.py
       - name: 部署 Worker 並設定管理密碼
         run: |

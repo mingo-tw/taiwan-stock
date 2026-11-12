@@ -87,6 +87,7 @@ jobs:
           fi
           npm ci --no-audit --no-fund
           npx wrangler d1 execute taiwan-stock-auth --remote --file worker/schema.sql
+          bash worker/migrate.sh --remote
           npx wrangler deploy
           if [ -n "$ADMIN_PASSWORD" ]; then echo "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; fi
 

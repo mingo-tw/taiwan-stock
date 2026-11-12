@@ -164,24 +164,26 @@
 <div id="gate" class="gate" hidden>
   <form id="gate-form" class="gate-box">
     <h2>台股籌碼追蹤</h2>
-    <p class="muted small">請輸入你的使用 Key</p>
-    <input id="gate-key" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TWS-XXXX-XXXX-XXXX">
+    <p class="muted small">請用你申請時的名稱和 4 位數密碼登入</p>
+    <input id="gate-name" autocomplete="username" maxlength="40" placeholder="名稱">
+    <input id="gate-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="current-password" placeholder="4 位數密碼">
     <button type="submit" id="gate-btn">登入</button>
     <p id="gate-msg" class="gate-msg"></p>
-    <p class="small"><a href="#" id="to-apply">還沒有 Key？申請使用</a></p>
-    <p class="muted small">一把 Key 同時只能在一台裝置使用。換裝置前請先按右上角「登出」；沒登出的話，要等舊裝置閒置幾分鐘後，才能在新裝置登入。本站會記錄登入時間、裝置類型與 IP。</p>
+    <p class="small"><a href="#" id="to-apply">還沒有帳號？申請使用</a></p>
+    <p class="muted small">一個帳號同時只能在一台裝置使用。換裝置前請先按右上角「登出」；沒登出的話，要等舊裝置閒置幾分鐘後，才能在新裝置登入。本站會記錄登入時間、裝置類型與 IP。</p>
   </form>
   <form id="apply-form" class="gate-box" hidden>
-    <h2>申請使用 Key</h2>
-    <p class="muted small">送出後，管理員審核通過會把 Key 傳給你。</p>
-    <input id="ap-name" maxlength="40" placeholder="你的名稱（必填）" required style="text-transform:none;letter-spacing:0">
-    <input id="ap-note" maxlength="100" placeholder="聯絡方式，例如 LINE ID（選填）" style="text-transform:none;letter-spacing:0">
+    <h2>申請使用</h2>
+    <p class="muted small">設定你的名稱和 4 位數密碼，管理員核准後就能用這組名稱和密碼登入。</p>
+    <input id="ap-name" maxlength="40" placeholder="名稱（登入時要用，必填）" required>
+    <input id="ap-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="設定 4 位數密碼（必填）" required>
+    <input id="ap-note" maxlength="100" placeholder="聯絡方式，例如 LINE ID（選填）">
     <button type="submit" id="ap-btn">送出申請</button>
     <p id="ap-msg" class="gate-msg"></p>
-    <p class="small"><a href="#" id="to-login">已經有 Key？回到登入</a></p>
+    <p class="small"><a href="#" id="to-login">已經有帳號？回到登入</a></p>
   </form>
 </div>
-<footer class="muted small"><a href="#" id="apply-link" hidden>申請使用 Key</a><br>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日晚間自動更新。僅供參考，非投資建議。</footer>
+<footer class="muted small"><a href="#" id="apply-link" hidden>申請使用帳號</a><br>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日晚間自動更新。僅供參考，非投資建議。</footer>
 <script src="app.js"></script>
 </body>
 </html>

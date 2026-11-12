@@ -474,8 +474,8 @@
 
   // ---------- 登入（key 模式才會啟用；GitHub Pages 或開放模式下不影響） ----------
   const auth = { mode: "open", timer: null };
-  const REASON = { takeover: "這把 Key 已在其他裝置登入，你已被登出。", forced: "管理員已將你登出。",
-    disabled: "此 Key 已停用。", expired: "此 Key 已過期。", deleted: "此 Key 已被刪除。", logout: "" };
+  const REASON = { takeover: "這個帳號已在其他裝置登入，你已被登出。", forced: "管理員已將你登出。",
+    disabled: "此帳號已停用。", expired: "此帳號已過期，請聯絡管理員。", deleted: "此帳號已被刪除。", logout: "" };
   async function api(path, body) {
     const r = await fetch(path, { method: body ? "POST" : "GET", credentials: "same-origin",
       headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -498,16 +498,16 @@
   function showGate(msg) {
     stopHeartbeat();
     $("#gate").hidden = false; $("#gate-msg").textContent = msg || "";
-    setTimeout(() => $("#gate-key").focus(), 50);
+    setTimeout(() => $("#gate-name").focus(), 50);
     return new Promise(resolve => { auth.resolve = resolve; });
   }
   async function submitGate(e) {
     e.preventDefault();
     const btn = $("#gate-btn"); btn.disabled = true; $("#gate-msg").textContent = "";
-    const r = await api("api/login", { key: $("#gate-key").value });
+    const r = await api("api/login", { name: $("#gate-name").value, pin: $("#gate-pin").value });
     btn.disabled = false;
     if (r.ok) {
-      $("#gate").hidden = true; $("#gate-key").value = "";
+      $("#gate").hidden = true; $("#gate-pin").value = "";
       startHeartbeat();
       if (auth.resolve) { const f = auth.resolve; auth.resolve = null; f(true); }
       else location.reload();
@@ -525,12 +525,13 @@
   async function submitApply(e) {
     e.preventDefault();
     const btn = $("#ap-btn"); btn.disabled = true; $("#ap-msg").className = "gate-msg"; $("#ap-msg").textContent = "";
-    const r = await api("api/apply", { name: $("#ap-name").value, note: $("#ap-note").value });
+    if (!/^\d{4}$/.test($("#ap-pin").value)) { btn.disabled = false; $("#ap-msg").textContent = "密碼請設定 4 位數字"; return; }
+    const r = await api("api/apply", { name: $("#ap-name").value, pin: $("#ap-pin").value, note: $("#ap-note").value });
     btn.disabled = false;
     if (r.ok) {
       $("#ap-msg").className = "gate-msg ok";
-      $("#ap-msg").textContent = "已送出申請！管理員核發後會把 Key 傳給你。";
-      $("#ap-name").value = ""; $("#ap-note").value = "";
+      $("#ap-msg").textContent = `已送出申請！管理員核准後，就能用「${$("#ap-name").value.trim()}」和你設的密碼登入。`;
+      $("#ap-pin").value = ""; $("#ap-note").value = "";
     } else $("#ap-msg").textContent = r.error || "送出失敗";
   }
   function startHeartbeat() { stopHeartbeat(); auth.timer = setInterval(beat, 60000); }

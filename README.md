@@ -58,8 +58,11 @@ python tests/mock_run.py /tmp/demo     # 用模擬資料產生 /tmp/demo/data/ra
 網站同時部署在 GitHub Pages（永遠開放）與 Cloudflare Workers（可啟用 Key 登入）。
 
 - `worker/index.js`：登入、單一裝置限制、資料存取控管、管理 API；`worker/schema.sql`：D1 資料表
+- 使用者用「名稱＋自訂 4 位數密碼」申請，管理員核准後用同一組名稱和密碼登入（內部仍以 Key 管理，使用者看不到）
 - 管理頁：`https://<worker 網址>/admin`（用 GitHub secret `ADMIN_PASSWORD` 登入）
-  - 切換「開放／需要 Key」、發 Key（可設到期）、停用／刪除、強制登出、看誰在使用與登入紀錄（時間、裝置、IP）
-- 一把 Key 同一時間只能一台裝置使用；舊裝置登出、或閒置超過設定時間（預設 3 分鐘）後才能換裝置
+  - 切換「開放／需要登入」、審核申請（預設效期 1 年）、直接新增使用者、改到期日、重設密碼、停用／刪除、強制登出、看誰在使用與登入紀錄（時間、裝置、IP）
+- 一個帳號同一時間只能一台裝置使用；舊裝置登出、或閒置超過設定時間（預設 3 分鐘）後才能換裝置
+- 防猜密碼：同一帳號 1 小時內錯 10 次鎖住（重設密碼即解除）；同一 IP 10 分鐘內錯 20 次暫停
+- 資料庫欄位異動放在 `worker/migrate.sh`，部署時自動執行
 - 第一次設定：在 repo secrets 加 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`ADMIN_PASSWORD`，再手動執行「Cloudflare 一次性設定」
 - 正式啟用 Key 前：把 repo 改成私人並關閉 GitHub Pages，否則資料仍可從 GitHub 取得

@@ -59,6 +59,11 @@ function newKey() {
   return `TWS-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}`;
 }
 const normKey = k => String(k || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+// 名稱比對：去頭尾空白、多個空白合一、英文不分大小寫
+const normName = n => String(n || "").trim().replace(/\s+/g, " ").toLowerCase();
+const cleanName = n => String(n || "").trim().replace(/\s+/g, " ").slice(0, 40);
+const pinValid = p => /^\d{4}$/.test(String(p || ""));
+const pinHash = (uname, pin) => sha256(`tws|${uname}|${pin}`);
 function getCookie(req, name) {
   const c = req.headers.get("Cookie") || "";
   const m = c.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
@@ -124,17 +129,36 @@ async function login(req, env) {
   const s = await settings(env);
   if (s.auth_mode !== "key") return json({ ok: true, mode: "open" });
   const ip = ipOf(req);
-  // 防暴力猜測：同一 IP 10 分鐘內錯 10 次就暫停
+  // 防暴力猜測：同一 IP 10 分鐘內錯 20 次就暫停（手機網路常多人共用 IP，所以放寬一些）
   const fails = await env.DB.prepare("SELECT COUNT(*) n FROM events WHERE type = 'denied_invalid' AND ip = ? AND ts > ?")
     .bind(ip, now() - 600).first();
-  if (fails.n >= 10) return json({ ok: false, error: "嘗試次數太多，請 10 分鐘後再試" }, 429);
+  if (fails.n >= 20) return json({ ok: false, error: "嘗試次數太多，請 10 分鐘後再試" }, 429);
 
   const body = await req.json().catch(() => ({}));
-  const k = await env.DB.prepare("SELECT * FROM keys WHERE key_hash = ?").bind(await sha256(normKey(body.key))).first();
+  let k;
+  if (body.name !== undefined) {
+    const uname = normName(body.name);
+    k = uname ? await env.DB.prepare("SELECT * FROM keys WHERE username = ?").bind(uname).first() : null;
+    if (k) {
+      // 同一個帳號 1 小時內密碼錯 10 次就鎖住（管理員重設密碼可解除）
+      const since = Math.max(now() - 3600, k.pin_set_at || 0);
+      const f = await env.DB.prepare("SELECT COUNT(*) n FROM events WHERE key_id = ? AND type = 'denied_pin' AND ts > ?")
+        .bind(k.id, since).first();
+      if (f.n >= 10) return json({ ok: false, error: "密碼錯太多次，已暫時鎖住。請 1 小時後再試，或請管理員重設密碼。" }, 429);
+      if (!pinValid(body.pin) || (await pinHash(uname, body.pin)) !== k.pin_hash) {
+        await logEvent(env, req, k.id, "denied_pin");
+        await logEvent(env, req, null, "denied_invalid");  // 也算進 IP 的錯誤次數
+        return json({ ok: false, error: "名稱或密碼不正確" }, 403);
+      }
+    }
+  } else {
+    k = await env.DB.prepare("SELECT * FROM keys WHERE key_hash = ?").bind(await sha256(normKey(body.key))).first();
+  }
   const bad = keyUsable(k);
   if (bad) {
     await logEvent(env, req, k ? k.id : null, bad === "invalid" ? "denied_invalid" : "denied_" + bad);
-    const msg = { invalid: "Key 不正確", disabled: "此 Key 已停用", expired: "此 Key 已過期" }[bad];
+    const msg = { invalid: body.name !== undefined ? "名稱或密碼不正確" : "Key 不正確",
+                  disabled: "此帳號已停用，請聯絡管理員", expired: "此帳號已過期，請聯絡管理員" }[bad];
     return json({ ok: false, error: msg }, 403);
   }
 
@@ -149,7 +173,7 @@ async function login(req, env) {
   if (busy) {
     await logEvent(env, req, k.id, "denied_busy");
     const wait = s.idle_seconds - (t - busy.last_seen);
-    return json({ ok: false, busy: true, error: `此 Key 正在其他裝置（${busy.device}）使用中。請先在那台裝置登出，或約 ${Math.ceil(wait / 60)} 分鐘後再試。` }, 409);
+    return json({ ok: false, busy: true, error: `此帳號正在其他裝置（${busy.device}）使用中。請先在那台裝置登出，或約 ${Math.ceil(wait / 60)} 分鐘後再試。` }, 409);
   }
   for (const x of open) {
     await env.DB.prepare("UPDATE sessions SET ended_at = ?, end_reason = 'takeover' WHERE id = ?").bind(t, x.id).run();
@@ -193,11 +217,15 @@ async function apply(req, env) {
     .bind(ip, now() - 3600).first();
   if (n.n >= 5) return json({ ok: false, error: "申請次數太多，請稍後再試" }, 429);
   const body = await req.json().catch(() => ({}));
-  const name = String(body.name || "").trim().slice(0, 40);
+  const name = cleanName(body.name), uname = normName(body.name);
   const note = String(body.note || "").trim().slice(0, 100);
   if (!name) return json({ ok: false, error: "請填寫名稱" }, 400);
-  await env.DB.prepare("INSERT INTO applications (name, note, ip, device, country, created_at) VALUES (?,?,?,?,?,?)")
-    .bind(name, note, ip, device(req), countryOf(req), now()).run();
+  if (!pinValid(body.pin)) return json({ ok: false, error: "密碼請設定 4 位數字" }, 400);
+  const dup = await env.DB.prepare("SELECT 1 FROM keys WHERE username = ?").bind(uname).first()
+    || (await env.DB.prepare("SELECT name FROM applications WHERE status = 'pending'").all()).results.find(a => normName(a.name) === uname);
+  if (dup) return json({ ok: false, error: "這個名稱已經有人使用或正在申請，請換一個" }, 409);
+  await env.DB.prepare("INSERT INTO applications (name, note, pin_hash, ip, device, country, created_at) VALUES (?,?,?,?,?,?,?)")
+    .bind(name, note, await pinHash(uname, body.pin), ip, device(req), countryOf(req), now()).run();
   return json({ ok: true });
 }
 
@@ -226,7 +254,8 @@ async function admin(req, env, url) {
   if (p === "/state" && req.method === "GET") {
     const t = now();
     const { results: keys } = await env.DB.prepare(`
-      SELECT k.id, k.key_hint, k.label, k.created_at, k.expires_at, k.disabled,
+      SELECT k.id, k.key_hint, k.label, k.username, k.created_at, k.expires_at, k.disabled,
+        (SELECT COUNT(*) FROM events e WHERE e.key_id = k.id AND e.type = 'denied_pin' AND e.ts > MAX(${now() - 3600}, COALESCE(k.pin_set_at, 0))) AS pin_fails,
         (SELECT MAX(ts) FROM events e WHERE e.key_id = k.id AND e.type = 'login') AS last_login,
         (SELECT COUNT(*) FROM events e WHERE e.key_id = k.id AND e.type = 'login') AS logins
       FROM keys k ORDER BY k.id DESC`).all();
@@ -239,24 +268,32 @@ async function admin(req, env, url) {
     }
     const { results: events } = await env.DB.prepare(`
       SELECT e.*, k.label, k.key_hint FROM events e LEFT JOIN keys k ON k.id = e.key_id
-      WHERE e.type != 'admin_fail' ORDER BY e.id DESC LIMIT 300`).all();
+      WHERE e.type NOT IN ('admin_fail') AND NOT (e.type = 'denied_invalid' AND e.key_id IS NULL AND EXISTS (
+        SELECT 1 FROM events d WHERE d.type = 'denied_pin' AND d.ts = e.ts AND d.ip = e.ip))
+      ORDER BY e.id DESC LIMIT 300`).all();
     const { results: apps } = await env.DB.prepare(`
       SELECT a.*, k.key_hint FROM applications a LEFT JOIN keys k ON k.id = a.key_id
       ORDER BY (a.status = 'pending') DESC, a.id DESC LIMIT 200`).all();
     return json({ settings: s, now: t, keys, events, apps });
   }
 
-  const makeKey = async (label, days) => {
-    const key = newKey();
+  const makeKey = async (label, days, uname = null, pinH = null) => {
+    const key = newKey();  // 內部識別用，使用者不需要知道
     const exp = days > 0 ? now() + days * 86400 : null;
-    const r = await env.DB.prepare("INSERT INTO keys (key_hash, key_hint, label, created_at, expires_at) VALUES (?,?,?,?,?)")
-      .bind(await sha256(normKey(key)), key.slice(-4), String(label || "").slice(0, 60), now(), exp).run();
+    const r = await env.DB.prepare(
+      "INSERT INTO keys (key_hash, key_hint, label, created_at, expires_at, username, pin_hash, pin_set_at) VALUES (?,?,?,?,?,?,?,?)")
+      .bind(await sha256(normKey(key)), key.slice(-4), String(label || "").slice(0, 60), now(), exp, uname, pinH, pinH ? now() : null).run();
     return { key, id: r.meta.last_row_id };
   };
 
+  // 管理員直接新增使用者（名稱＋4 位數密碼）
   if (p === "/keys" && req.method === "POST") {
-    const { key } = await makeKey(body.label, Number(body.days) || 0);
-    return json({ ok: true, key });
+    const name = cleanName(body.name || body.label), uname = normName(name);
+    if (!name) return json({ error: "請填寫名稱" }, 400);
+    const pin = pinValid(body.pin) ? String(body.pin) : String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+    if (await env.DB.prepare("SELECT 1 FROM keys WHERE username = ?").bind(uname).first()) return json({ error: "這個名稱已經存在" }, 409);
+    await makeKey(name, Number(body.days) || 0, uname, await pinHash(uname, pin));
+    return json({ ok: true, name, pin });
   }
 
   const ma = p.match(/^\/applications\/(\d+)$/);
@@ -267,10 +304,13 @@ async function admin(req, env, url) {
     if (body.action === "approve") {
       if (a.status === "approved") return json({ error: "已經核發過了" }, 400);
       const days = body.days === undefined ? 365 : Number(body.days) || 0;
-      const { key, id: keyId } = await makeKey(a.name + (a.note ? `（${a.note}）` : ""), days);
+      const uname = normName(a.name);
+      if (await env.DB.prepare("SELECT 1 FROM keys WHERE username = ?").bind(uname).first()) return json({ error: "已經有同名的使用者" }, 409);
+      const { id: keyId } = await makeKey(a.name, days, uname, a.pin_hash);
+      if (a.note) await env.DB.prepare("UPDATE keys SET label = ? WHERE id = ?").bind(`${a.name}（${a.note}）`.slice(0, 60), keyId).run();
       await env.DB.prepare("UPDATE applications SET status = 'approved', decided_at = ?, key_id = ? WHERE id = ?")
         .bind(now(), keyId, id).run();
-      return json({ ok: true, key });
+      return json({ ok: true, name: a.name });
     }
     if (body.action === "reject") {
       await env.DB.prepare("UPDATE applications SET status = 'rejected', decided_at = ? WHERE id = ?").bind(now(), id).run();
@@ -293,6 +333,13 @@ async function admin(req, env, url) {
       case "enable": await env.DB.prepare("UPDATE keys SET disabled = 0 WHERE id = ?").bind(id).run(); break;
       case "release": await endAll("forced"); await logEvent(env, req, id, "forced"); break;
       case "label": await env.DB.prepare("UPDATE keys SET label = ? WHERE id = ?").bind(String(body.label || "").slice(0, 60), id).run(); break;
+      case "reset_pin": {
+        const k = await env.DB.prepare("SELECT username FROM keys WHERE id = ?").bind(id).first();
+        if (!k || !k.username) return json({ error: "這把 Key 沒有名稱帳號" }, 400);
+        const pin = pinValid(body.pin) ? String(body.pin) : String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+        await env.DB.prepare("UPDATE keys SET pin_hash = ?, pin_set_at = ? WHERE id = ?").bind(await pinHash(k.username, pin), now(), id).run();
+        return json({ ok: true, pin });
+      }
       case "expire_at": {  // 指定到期時間（秒）；null = 不過期
         const at = body.expires_at === null ? null : Number(body.expires_at);
         if (at !== null && !(at > 0)) return json({ error: "日期不正確" }, 400);

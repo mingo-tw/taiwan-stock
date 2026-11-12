@@ -152,7 +152,7 @@ td.why { color: var(--muted); font-size: 12px; }
 .gate-box { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; display: grid; gap: 10px; }
 .gate-box h2 { margin: 0; font-size: 20px; }
 .gate-box p { margin: 0; }
-.gate-box input { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); font-size: 17px; letter-spacing: 1px; text-transform: uppercase; }
+.gate-box input { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); font-size: 17px; }
 .gate-box button { padding: 12px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; font-size: 16px; cursor: pointer; }
 .gate-box button:disabled { opacity: .6; }
 .gate-msg { color: var(--up); font-size: 13px; min-height: 1em; }
