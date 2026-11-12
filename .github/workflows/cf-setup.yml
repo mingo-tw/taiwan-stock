@@ -1,5 +1,11 @@
 name: Cloudflare 一次性設定
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      recreate_db:
+        description: "刪掉舊資料庫重建（會清空所有 Key 與紀錄！）"
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -24,8 +30,12 @@ jobs:
       - name: 建立 D1 資料庫（已存在就沿用）
         run: |
           id=$(npx wrangler d1 list --json | python3 -c "import sys,json;print(next((d['uuid'] for d in json.load(sys.stdin) if d['name']=='taiwan-stock-auth'),''))")
+          if [ -n "$id" ] && [ "${{ github.event.inputs.recreate_db }}" = "true" ]; then
+            npx wrangler d1 delete taiwan-stock-auth --skip-confirmation
+            id=""
+          fi
           if [ -z "$id" ]; then
-            npx wrangler d1 create taiwan-stock-auth
+            npx wrangler d1 create taiwan-stock-auth --location apac
             id=$(npx wrangler d1 list --json | python3 -c "import sys,json;print(next(d['uuid'] for d in json.load(sys.stdin) if d['name']=='taiwan-stock-auth'))")
           fi
           echo "D1 id: $id"
