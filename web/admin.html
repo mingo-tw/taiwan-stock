@@ -24,7 +24,9 @@
   .mode { font-weight: 650; }
   td .acts { display: flex; gap: 4px; }
   .warn { color: var(--up); }
-  #keys th, #keys td, #events th, #events td { text-align: left; }
+  #keys th, #keys td, #events th, #events td, #apps th, #apps td { text-align: left; }
+  .exp { display: flex; gap: 4px; align-items: center; }
+  .exp input { padding: 2px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -60,12 +62,28 @@
   </div>
 
   <div class="card">
-    <h2>發新 Key</h2>
+    <div class="row" style="justify-content:space-between"><h2>Key 申請</h2><span class="muted small" id="app-count"></span></div>
+    <div class="row" style="margin-bottom:8px">
+      <label>核發效期：</label>
+      <select id="ap-days">
+        <option value="30">30 天</option><option value="90">90 天</option><option value="180">半年</option>
+        <option value="365" selected>1 年</option><option value="0">不過期</option>
+      </select>
+    </div>
+    <div class="table-wrap"><table id="apps"></table></div>
+    <div id="apkey-box" hidden style="margin-top:10px">
+      <div class="row"><span id="apkey-who"></span><span class="newkey" id="apkey"></span><button class="btn ghost" id="apcopy" type="button">複製</button></div>
+      <p class="note warn">這組 Key 只會顯示這一次，請現在複製並傳給對方。</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>手動發新 Key</h2>
     <form class="row" id="new-form">
       <input id="label" placeholder="發給誰（例：小明）" maxlength="60" required>
       <select id="days">
-        <option value="0">不過期</option><option value="7">7 天</option><option value="30">30 天</option>
-        <option value="90">90 天</option><option value="365">1 年</option>
+        <option value="365" selected>1 年</option><option value="180">半年</option><option value="90">90 天</option>
+        <option value="30">30 天</option><option value="7">7 天</option><option value="0">不過期</option>
       </select>
       <button class="btn" type="submit">產生 Key</button>
     </form>
@@ -139,13 +157,51 @@
         return [k.label || "—", "…" + k.key_hint, st, k.session ? k.session.device : "—",
           k.session ? `${k.session.ip}${k.session.country ? " (" + k.session.country + ")" : ""}` : "—",
           k.session ? ago(S.now - k.session.last_seen) : "—", fmt(k.last_login), String(k.logins),
-          k.expires_at ? fmt(k.expires_at) : "不過期", acts];
+          expCell(k), acts];
       }));
+    drawApps();
     table($("#events"), ["時間", "發給", "事件", "裝置", "IP"],
       S.events.map(e => [fmt(e.ts), e.label || (e.key_hint ? "…" + e.key_hint : "—"),
         e.type.startsWith("denied") ? pill(EV[e.type] || e.type, "bad") : (EV[e.type] || e.type), e.device,
         `${e.ip || ""}${e.country ? " (" + e.country + ")" : ""}`]));
   }
+  // 到期日：日期欄位直接改；「不過期」清除
+  const ymd = t => { const d = new Date(t * 1000 + 8 * 3600e3); return d.toISOString().slice(0, 10); };
+  function expCell(k) {
+    const box = el("div", "exp"), inp = el("input"); inp.type = "date";
+    if (k.expires_at) inp.value = ymd(k.expires_at);
+    inp.onchange = async () => {
+      if (!inp.value) return;
+      const at = Math.floor(new Date(inp.value + "T23:59:59+08:00").getTime() / 1000);
+      await call(`/keys/${k.id}`, { action: "expire_at", expires_at: at }); load();
+    };
+    box.appendChild(inp);
+    if (k.expires_at) box.appendChild(btn("不過期", async () => { await call(`/keys/${k.id}`, { action: "expire_at", expires_at: null }); load(); }));
+    else box.appendChild(el("span", "muted small", "不過期"));
+    if (k.expires_at && k.expires_at < S.now) box.appendChild(el("span", "warn small", "已過期"));
+    return box;
+  }
+
+  function drawApps() {
+    const pend = S.apps.filter(a => a.status === "pending").length;
+    $("#app-count").textContent = pend ? `${pend} 筆待審核` : "沒有待審核的申請";
+    const ST = { pending: pill("待審核", "idle"), approved: null, rejected: pill("已拒絕", "off") };
+    table($("#apps"), ["申請時間", "名稱", "聯絡方式／備註", "裝置", "IP", "狀態", "操作"],
+      S.apps.map(a => {
+        const acts = el("div", "acts");
+        if (a.status === "pending") {
+          acts.appendChild(btn("核發 Key", async () => {
+            const r = await call(`/applications/${a.id}`, { action: "approve", days: Number($("#ap-days").value) });
+            $("#apkey-who").textContent = `給 ${a.name}：`; $("#apkey").textContent = r.key; $("#apkey-box").hidden = false; load();
+          }));
+          acts.appendChild(btn("拒絕", async () => { await call(`/applications/${a.id}`, { action: "reject" }); load(); }, "danger"));
+        }
+        acts.appendChild(btn("刪除", async () => { if (confirmBox(`刪除「${a.name}」的申請紀錄？`)) { await call(`/applications/${a.id}`, { action: "delete" }); load(); } }, "danger"));
+        const st = a.status === "approved" ? pill(`已核發 …${a.key_hint || ""}`, "on") : ST[a.status];
+        return [fmt(a.created_at), a.name, a.note || "—", a.device, `${a.ip || ""}${a.country ? " (" + a.country + ")" : ""}`, st, acts];
+      }));
+  }
+
   async function act(k, action, confirmMsg) {
     if (confirmMsg && !confirmBox(confirmMsg)) return;
     await call(`/keys/${k.id}`, { action }); load();
@@ -175,6 +231,11 @@
     try { await navigator.clipboard.writeText($("#newkey").textContent); $("#copy").textContent = "已複製"; }
     catch { $("#copy").textContent = "請手動選取複製"; }
     setTimeout(() => { $("#copy").textContent = "複製"; }, 2000);
+  };
+  $("#apcopy").onclick = async () => {
+    try { await navigator.clipboard.writeText($("#apkey").textContent); $("#apcopy").textContent = "已複製"; }
+    catch { $("#apcopy").textContent = "請手動選取複製"; }
+    setTimeout(() => { $("#apcopy").textContent = "複製"; }, 2000);
   };
   setInterval(() => { if (PW && !$("#app").hidden) load().catch(() => {}); }, 30000);
   if (PW) load().catch(() => {}); else gate("");

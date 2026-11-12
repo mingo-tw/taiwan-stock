@@ -488,6 +488,7 @@
       if (!r.ok || !(r.headers.get("Content-Type") || "").includes("json")) return true; // 沒有後端（GitHub Pages）
       const j = await r.json();
       auth.mode = j.mode;
+      $("#apply-link").hidden = false;  // 有後端（Cloudflare）才提供申請
       if (j.mode !== "key") return true;
       $("#logout").hidden = false;
       if (j.authed) { startHeartbeat(); return true; }
@@ -517,6 +518,21 @@
     const r = await api("api/heartbeat", {}).catch(() => null);
     if (r && r.status === 401) showGate(REASON[r.reason] || "請重新登入。");
   }
+  function showApply(on) {
+    $("#gate-form").hidden = on; $("#apply-form").hidden = !on;
+    if (on) setTimeout(() => $("#ap-name").focus(), 50);
+  }
+  async function submitApply(e) {
+    e.preventDefault();
+    const btn = $("#ap-btn"); btn.disabled = true; $("#ap-msg").className = "gate-msg"; $("#ap-msg").textContent = "";
+    const r = await api("api/apply", { name: $("#ap-name").value, note: $("#ap-note").value });
+    btn.disabled = false;
+    if (r.ok) {
+      $("#ap-msg").className = "gate-msg ok";
+      $("#ap-msg").textContent = "已送出申請！管理員核發後會把 Key 傳給你。";
+      $("#ap-name").value = ""; $("#ap-note").value = "";
+    } else $("#ap-msg").textContent = r.error || "送出失敗";
+  }
   function startHeartbeat() { stopHeartbeat(); auth.timer = setInterval(beat, 60000); }
   function stopHeartbeat() { if (auth.timer) clearInterval(auth.timer); auth.timer = null; }
   document.addEventListener("visibilitychange", () => { if (auth.mode === "key" && auth.timer) beat(); });
@@ -531,6 +547,13 @@
 
   async function init() {
     $("#gate-form").addEventListener("submit", submitGate);
+    $("#apply-form").addEventListener("submit", submitApply);
+    $("#to-apply").addEventListener("click", e => { e.preventDefault(); showApply(true); });
+    $("#to-login").addEventListener("click", e => {
+      e.preventDefault();
+      if (auth.mode === "key") showApply(false); else $("#gate").hidden = true;  // 開放模式：直接關掉
+    });
+    $("#apply-link").addEventListener("click", e => { e.preventDefault(); $("#gate").hidden = false; showApply(true); });
     $("#logout").addEventListener("click", async () => { await api("api/logout", {}); location.reload(); });
     await checkAuth();
     segs();

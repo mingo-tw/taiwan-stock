@@ -17,6 +17,7 @@ export default {
       if (p === "/api/login" && req.method === "POST") return await login(req, env);
       if (p === "/api/heartbeat" && req.method === "POST") return await heartbeat(req, env);
       if (p === "/api/logout" && req.method === "POST") return await logout(req, env);
+      if (p === "/api/apply" && req.method === "POST") return await apply(req, env);
       if (p.startsWith("/api/")) return json({ error: "not found" }, 404);
 
       if (p.startsWith("/data/")) {
@@ -185,6 +186,21 @@ async function logout(req, env) {
   return json({ ok: true }, 200, { "Set-Cookie": cookie("", 0) });
 }
 
+// 申請 Key：只填名稱（＋選填聯絡方式），進入待審核清單
+async function apply(req, env) {
+  const ip = ipOf(req);
+  const n = await env.DB.prepare("SELECT COUNT(*) n FROM applications WHERE ip = ? AND created_at > ?")
+    .bind(ip, now() - 3600).first();
+  if (n.n >= 5) return json({ ok: false, error: "申請次數太多，請稍後再試" }, 429);
+  const body = await req.json().catch(() => ({}));
+  const name = String(body.name || "").trim().slice(0, 40);
+  const note = String(body.note || "").trim().slice(0, 100);
+  if (!name) return json({ ok: false, error: "請填寫名稱" }, 400);
+  await env.DB.prepare("INSERT INTO applications (name, note, ip, device, country, created_at) VALUES (?,?,?,?,?,?)")
+    .bind(name, note, ip, device(req), countryOf(req), now()).run();
+  return json({ ok: true });
+}
+
 // ---------- 管理 API ----------
 function safeEq(a, b) {
   a = String(a || ""); b = String(b || "");
@@ -224,16 +240,47 @@ async function admin(req, env, url) {
     const { results: events } = await env.DB.prepare(`
       SELECT e.*, k.label, k.key_hint FROM events e LEFT JOIN keys k ON k.id = e.key_id
       WHERE e.type != 'admin_fail' ORDER BY e.id DESC LIMIT 300`).all();
-    return json({ settings: s, now: t, keys, events });
+    const { results: apps } = await env.DB.prepare(`
+      SELECT a.*, k.key_hint FROM applications a LEFT JOIN keys k ON k.id = a.key_id
+      ORDER BY (a.status = 'pending') DESC, a.id DESC LIMIT 200`).all();
+    return json({ settings: s, now: t, keys, events, apps });
   }
 
-  if (p === "/keys" && req.method === "POST") {
+  const makeKey = async (label, days) => {
     const key = newKey();
-    const days = Number(body.days) || 0;
     const exp = days > 0 ? now() + days * 86400 : null;
-    await env.DB.prepare("INSERT INTO keys (key_hash, key_hint, label, created_at, expires_at) VALUES (?,?,?,?,?)")
-      .bind(await sha256(normKey(key)), key.slice(-4), String(body.label || "").slice(0, 60), now(), exp).run();
+    const r = await env.DB.prepare("INSERT INTO keys (key_hash, key_hint, label, created_at, expires_at) VALUES (?,?,?,?,?)")
+      .bind(await sha256(normKey(key)), key.slice(-4), String(label || "").slice(0, 60), now(), exp).run();
+    return { key, id: r.meta.last_row_id };
+  };
+
+  if (p === "/keys" && req.method === "POST") {
+    const { key } = await makeKey(body.label, Number(body.days) || 0);
     return json({ ok: true, key });
+  }
+
+  const ma = p.match(/^\/applications\/(\d+)$/);
+  if (ma && req.method === "POST") {
+    const id = Number(ma[1]);
+    const a = await env.DB.prepare("SELECT * FROM applications WHERE id = ?").bind(id).first();
+    if (!a) return json({ error: "找不到申請" }, 404);
+    if (body.action === "approve") {
+      if (a.status === "approved") return json({ error: "已經核發過了" }, 400);
+      const days = body.days === undefined ? 365 : Number(body.days) || 0;
+      const { key, id: keyId } = await makeKey(a.name + (a.note ? `（${a.note}）` : ""), days);
+      await env.DB.prepare("UPDATE applications SET status = 'approved', decided_at = ?, key_id = ? WHERE id = ?")
+        .bind(now(), keyId, id).run();
+      return json({ ok: true, key });
+    }
+    if (body.action === "reject") {
+      await env.DB.prepare("UPDATE applications SET status = 'rejected', decided_at = ? WHERE id = ?").bind(now(), id).run();
+      return json({ ok: true });
+    }
+    if (body.action === "delete") {
+      await env.DB.prepare("DELETE FROM applications WHERE id = ?").bind(id).run();
+      return json({ ok: true });
+    }
+    return json({ error: "unknown action" }, 400);
   }
 
   const m = p.match(/^\/keys\/(\d+)$/);
@@ -246,6 +293,12 @@ async function admin(req, env, url) {
       case "enable": await env.DB.prepare("UPDATE keys SET disabled = 0 WHERE id = ?").bind(id).run(); break;
       case "release": await endAll("forced"); await logEvent(env, req, id, "forced"); break;
       case "label": await env.DB.prepare("UPDATE keys SET label = ? WHERE id = ?").bind(String(body.label || "").slice(0, 60), id).run(); break;
+      case "expire_at": {  // 指定到期時間（秒）；null = 不過期
+        const at = body.expires_at === null ? null : Number(body.expires_at);
+        if (at !== null && !(at > 0)) return json({ error: "日期不正確" }, 400);
+        await env.DB.prepare("UPDATE keys SET expires_at = ? WHERE id = ?").bind(at, id).run();
+        break;
+      }
       case "expire": {
         const days = Number(body.days) || 0;
         await env.DB.prepare("UPDATE keys SET expires_at = ? WHERE id = ?").bind(days > 0 ? now() + days * 86400 : null, id).run();

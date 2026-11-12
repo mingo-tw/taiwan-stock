@@ -157,3 +157,5 @@ td.why { color: var(--muted); font-size: 12px; }
 .gate-box button:disabled { opacity: .6; }
 .gate-msg { color: var(--up); font-size: 13px; min-height: 1em; }
 [hidden] { display: none !important; }
+.gate-box a, footer a { color: var(--accent); }
+.gate-msg.ok { color: var(--down); }

@@ -31,3 +31,15 @@ CREATE TABLE IF NOT EXISTS events (
   device TEXT, ip TEXT, country TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
+
+CREATE TABLE IF NOT EXISTS applications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',   -- 聯絡方式／備註（選填）
+  ip TEXT, device TEXT, country TEXT,
+  created_at INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending / approved / rejected
+  decided_at INTEGER,
+  key_id INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_app_status ON applications (status, created_at);
