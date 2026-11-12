@@ -187,3 +187,7 @@ td.sell { font-weight: 600; white-space: normal; min-width: 180px; }
 #hd-form input[type=date], #hd-form input[type=number] { flex: 1 1 130px; }
 .btn-s + .btn-s { margin-left: 4px; }
 td.sell { text-align: left; }
+
+.disc { z-index: 200; background: rgba(0,0,0,.55); }
+.disc .gate-box { max-width: 420px; line-height: 1.6; }
+.disc .gate-box p { font-size: 15px; }

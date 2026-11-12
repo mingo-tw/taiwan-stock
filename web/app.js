@@ -776,7 +776,17 @@
     return false;
   }
 
+  // ---------- 免責聲明：每次開啟網站（新分頁／新瀏覽階段）都先跳出，按「我了解」才關閉 ----------
+  function disclaimer() {
+    const box = $("#disc"), seen = () => { try { return sessionStorage.getItem("tw_disc") === "1"; } catch { return false; } };
+    const close = () => { box.hidden = true; try { sessionStorage.setItem("tw_disc", "1"); } catch { /* */ } };
+    $("#disc-ok").addEventListener("click", close);
+    $("#disc-open").addEventListener("click", e => { e.preventDefault(); box.hidden = false; });
+    if (!seen()) box.hidden = false;
+  }
+
   async function init() {
+    disclaimer();
     if (moveNotice()) return;
     $("#gate-form").addEventListener("submit", submitGate);
     $("#apply-form").addEventListener("submit", submitApply);

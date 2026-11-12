@@ -236,6 +236,15 @@
 </main>
 
 <div id="tip" class="tip" hidden></div>
+<div id="disc" class="gate disc" role="dialog" aria-modal="true" aria-labelledby="disc-h" hidden>
+  <div class="gate-box">
+    <h2 id="disc-h">⚠️ 使用前請先閱讀</h2>
+    <p>本網站的資料與訊號（含「訊號股」、回測勝率、賣出提醒）皆整理自公開資料與<b>歷史回測</b>，<b>僅供參考，不是投資建議</b>。</p>
+    <p>過去的績效不代表未來結果，實際交易可能發生虧損，也可能因資料延遲或錯誤而與實際情況不同。</p>
+    <p><b>是否買賣、買賣多少，請自行評估風險，並自負盈虧。</b></p>
+    <button id="disc-ok" type="button">我了解，進入網站</button>
+  </div>
+</div>
 <div id="gate" class="gate" hidden>
   <form id="gate-form" class="gate-box">
     <h2>台股-脫離社畜研究社</h2>
@@ -259,7 +268,7 @@
     <p class="small"><a href="#" id="to-login">已經有帳號？回到登入</a></p>
   </form>
 </div>
-<footer class="muted small"><a href="#" id="apply-link" hidden>申請使用帳號</a><br>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日晚間自動更新。僅供參考，非投資建議。</footer>
+<footer class="muted small"><a href="#" id="apply-link" hidden>申請使用帳號</a><br>資料來源：臺灣證券交易所、證券櫃檯買賣中心公開資料，每個交易日晚間自動更新。僅供參考，非投資建議，請自行評估風險。<br><a href="#" id="disc-open">免責聲明</a></footer>
 <script src="app.js"></script>
 </body>
 </html>
