@@ -1,0 +1,49 @@
+name: 回補開高低收（訊號股用）
+
+# 訊號股要用 KD、RSI、週 K，需要約 100 個交易日的開高低收與法人資料。
+# 第一次（或資料斷掉時）執行：Actions → 本工作流程 → Run workflow；
+# 或修改 data/ohlc_backfill.request 後 push 也會自動觸發。已經抓過的日子會跳過，重複執行沒有副作用。
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "回補最近幾個平日"
+        default: "150"
+  push:
+    branches: [main]
+    paths: ["data/ohlc_backfill.request"]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: tw-chips
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: 回補
+        env:
+          FETCH_SLEEP: "3"
+        run: python scripts/ohlc.py --days "${{ github.event.inputs.days || '150' }}" --max-minutes 55
+      - name: 存回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/ohlc
+          git diff --cached --quiet || git commit -m "data: 回補開高低收 $(TZ=Asia/Taipei date +%F)"
+          git pull --rebase origin main
+          git push
+      - name: 重新建置並部署網站
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run update.yml -f days=1

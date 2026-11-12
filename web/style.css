@@ -171,3 +171,8 @@ td.why { color: var(--muted); font-size: 12px; }
 .gate-box .btn-ghost { color: var(--text); background: var(--surface); font-weight: 400; border: 1px solid var(--border);
 }
 .btn-ghost { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; font-size: 14px; }
+
+/* 訊號股 */
+.cond { margin: 0 0 6px; padding-left: 20px; line-height: 1.7; }
+td.rec { font-weight: 600; }
+#sg-table td:first-child, #sg-table th:first-child { position: sticky; left: 0; background: var(--surface); }

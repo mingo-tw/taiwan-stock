@@ -457,11 +457,62 @@
   const pos = x => isNum(x) && x > 0;
   const WHY = { loss: "虧損", na: "無資料", no_est: "無分析師預估", est_loss: "預估虧損" };
 
+
+  // ---------- 訊號股 ----------
+  state.sver = "strict";
+  function drawSignals() {
+    const S = state.signals;
+    const msg = $("#sg-msg"), tbl = $("#sg-table");
+    if (!S) { msg.hidden = false; msg.textContent = "載入中…"; tbl.replaceChildren(); return; }
+    const st = S.stats, ver = st && st.versions[state.sver], rows = (S[state.sver] || []);
+    $("#sg-title").textContent = S.date ? `訊號股（${S.date}）` : "訊號股";
+    if (ver) {
+      $("#sg-cond").replaceChildren(...ver.cond.map(t => el("li", null, t)));
+      $("#sg-entry").textContent = `進場：${st.entry}。範圍：${st.universe}。`;
+    }
+    if (!S.ready) {
+      msg.hidden = false; msg.textContent = S.message || "尚未就緒"; tbl.replaceChildren();
+    } else {
+      $("#sg-list-h").textContent = `近 ${S.window.length} 個交易日（${mmdd(S.window[0])}～${mmdd(S.window[S.window.length - 1])}）出現訊號的股票・${rows.length} 檔`;
+      msg.hidden = rows.length > 0;
+      msg.textContent = "近 3 個交易日沒有股票符合這個版本的條件。";
+      const when = x => (x.first === x.last ? mmdd(x.first) : `${mmdd(x.first)}～${mmdd(x.last)}`) + (x.today ? "" : "（今日已不符）");
+      const sell = x => {
+        if (!x.entry) return { t: "明天開盤買進", cls: "why" };
+        if (x.exit) return { t: `${x.exit.why === "RSI" ? "RSI 回到 60" : "已賺 10%"}（${mmdd(x.exit.d)}）可賣`, cls: "up" };
+        return { t: `持有中・RSI ${nf(x.rsi_now, 1)}`, cls: "why" };
+      };
+      table(tbl, ["股票", "訊號日", "最新收盤", "K / D", "RSI", "週 K", "5 日跌幅", "法人連買", "外資／投信／自營（張）", "進場（隔日開盤）", "至今報酬", "賣點"],
+        rows.map(x => ({ code: x.c, cells: [
+          `${x.c} ${x.n}${x.m === "otc" ? "（櫃）" : ""}`, when(x), nf(x.now, 2), `${nf(x.K, 1)} / ${nf(x.D, 1)}`, nf(x.rsi, 1), nf(x.wk, 1),
+          { t: signed(x.r5, 1) + "%", cls: cls(x.r5) }, `${x.streak} 天`,
+          `${signed(x.F)} / ${signed(x.T)} / ${signed(x.Dl)}`,
+          x.entry ? `${mmdd(x.entry.d)}　${nf(x.entry.px, 2)}` : "—",
+          x.entry ? { t: signed(x.ret, 1) + "%", cls: cls(x.ret) } : "—", sell(x)] })),
+        r => openStock(r.code));
+    }
+    if (!ver) return;
+    const ex = ver.exits, rec = ex.find(e => e.exit === "RSI 回到 60") || ex[0];
+    $("#sg-stat-h").textContent = `回測成績・${ver.label}`;
+    $("#sg-stat-sub").textContent = `${st.period}，${st.universe}。${st.cost}。以下用「${rec.exit}」當賣點。`;
+    tiles($("#sg-tiles"), [
+      { k: "勝率", v: nf(rec.win, 0) + "%", s: `${nf(rec.n)} 筆交易` },
+      { k: "獲利因子", v: nf(rec.pf, 1), s: "賺的總額 ÷ 賠的總額" },
+      { k: "平均持有", v: nf(rec.avg_hold) + " 天", s: "交易日" },
+      { k: "平均每筆", v: signed(rec.avg_ret, 1) + "%", vc: cls(rec.avg_ret), s: `約每天 ${signed(rec.per_day, 2)}%` },
+    ]);
+    table($("#sg-stat"), ["賣出方式", "筆數", "勝率", "獲利因子", "平均持有", "平均每筆", "平均每天", "最差單筆", "上市／上櫃勝率"],
+      ex.map(e => ({ cells: [{ t: (e.rec ? "★ " : "") + e.exit, cls: e.rec ? "rec" : "" }, nf(e.n), nf(e.win, 0) + "%", nf(e.pf, 1), nf(e.avg_hold) + " 天",
+        { t: signed(e.avg_ret, 1) + "%", cls: cls(e.avg_ret) }, signed(e.per_day, 2) + "%", { t: nf(e.worst) + "%", cls: "down" },
+        `${nf(e.win_twse)}% ／ ${nf(e.win_otc)}%`] })));
+    $("#sg-notes").replaceChildren(...(st.notes || []).map(t => el("p", "note", t)));
+  }
+
   // ---------- 路由 ----------
   function route() {
     const h = location.hash.slice(1) || "overview";
     const [tab, code] = h.startsWith("stock-") ? ["stock", h.slice(6)] : [h, null];
-    const name = ["overview", "inst", "margin", "stock", "rank", "value"].includes(tab) ? tab : "overview";
+    const name = ["overview", "inst", "margin", "stock", "rank", "value", "signal"].includes(tab) ? tab : "overview";
     $$(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + name));
     $$("#tabs a").forEach(a => a.classList.toggle("on", a.dataset.tab === name));
     if (name === "stock") {
@@ -620,6 +671,9 @@
     });
     $("#rk-sel").addEventListener("change", drawRank);
     $("#vr-sort").addEventListener("change", drawValueRank);
+    $$("#sg-ver button").forEach(b => b.addEventListener("click", () => {
+      state.sver = b.dataset.v; $$("#sg-ver button").forEach(x => x.classList.toggle("on", x === b)); drawSignals();
+    }));
     $$("#vr-mkt button").forEach(b => b.addEventListener("click", () => {
       state.vmkt = b.dataset.m; $$("#vr-mkt button").forEach(x => x.classList.toggle("on", x === b)); drawValueRank();
     }));
@@ -629,6 +683,7 @@
     try {
       const [m, l, s] = await Promise.all([getJSON("data/market.json"), getJSON("data/latest.json"), getJSON("data/stocks.json")]);
       getJSON("data/valuation.json").then(v => { state.valuation = v; drawValueRank(); }).catch(() => {});
+      getJSON("data/signals.json").then(v => { state.signals = v; drawSignals(); }).catch(() => { state.signals = { ready: false, message: "訊號資料讀取失敗，請稍後再試。", stats: null }; drawSignals(); });
       state.market = m; state.latest = l; state.stocks = s;
       s.forEach(x => state.stockMap.set(x[0], x));
       const dl = $("#codes"); dl.replaceChildren(...s.map(x => { const o = el("option"); o.value = `${x[0]} ${x[1]}`; return o; }));

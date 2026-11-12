@@ -217,6 +217,13 @@ def main():
         "fin_up": top("fin_chg"), "fin_down": top("fin_chg", reverse=False),
         "ratio": top("ratio"),
     })
+    # ---- 訊號股（需要 data/ohlc 的開高低收歷史；不夠時只輸出「累積中」的說明）----
+    try:
+        import signals
+        signals.run(data)
+    except Exception as e:  # noqa: BLE001
+        print("訊號股產生失敗（略過，不影響其他頁面）：", e)
+        dump(data / "signals.json", {"ready": False, "message": "訊號資料暫時無法產生。", "stats": None})
     print(f"建置完成：{len(days)} 天、{len(hist)} 檔個股，最新 {last['date']}")
 
 

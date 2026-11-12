@@ -34,6 +34,7 @@
     <a href="#stock" data-tab="stock">個股查詢</a>
     <a href="#rank" data-tab="rank">籌碼排行</a>
     <a href="#value" data-tab="value">估值排行</a>
+    <a href="#signal" data-tab="signal">訊號股</a>
   </nav>
 </header>
 
@@ -170,6 +171,37 @@
     <div class="card"><div class="table-wrap"><table id="vr-table" class="clickable"></table></div>
       <p class="note">範圍：依市值（收盤價 × 已發行股數）取上市前 200 大、上櫃前 100 大。越便宜排越上面；沒有該項數字的排在最後，並直接標示原因：「虧損」＝近四季虧損，官方不公布本益比；「無分析師預估」＝沒有分析師追蹤（多為銀行、DR、小型股）；「預估虧損」＝分析師預估仍虧損。
         上市合理價 = EPS × 近 3 年平均本益比；上櫃沒有官方歷史本益比，合理價 = 預估 EPS × 目前本益比。前瞻本益比用分析師預估的未來 12 個月 EPS。點一列可查看個股。僅供參考，非投資建議。</p>
+    </div>
+  </section>
+
+  <!-- 訊號股 -->
+  <section id="v-signal" class="view">
+    <div class="card-h outside">
+      <h2 id="sg-title">訊號股</h2>
+      <div class="seg" id="sg-ver">
+        <button type="button" data-v="strict" class="on">嚴格版</button>
+        <button type="button" data-v="loose">寬鬆版</button>
+      </div>
+    </div>
+    <div class="card" id="sg-cond-card">
+      <h3 id="sg-cond-h">買進條件</h3>
+      <ol class="cond" id="sg-cond"></ol>
+      <p class="note" id="sg-entry"></p>
+    </div>
+    <div class="card">
+      <h2 id="sg-list-h">近 3 個交易日出現訊號的股票</h2>
+      <div id="sg-msg" class="empty" hidden></div>
+      <div class="table-wrap"><table id="sg-table" class="clickable"></table></div>
+      <p class="note">範圍：市值前 200 大上市＋前 100 大上櫃（不含 ETF）。同一檔連續幾天符合只列一列，進場價以「第一次出現訊號的隔天開盤價」計算，報酬已扣手續費與證交稅。
+        「賣點」欄是依回測較佳的兩種賣法判斷：RSI 回到 60，或從進場價賺到 10%，先到先賣；這只是參考，沒有停損。K、D、RSI、週 K、5 日跌幅、法人買賣超是最近一次出現訊號那天的數值；「最新收盤」是目前價格。點一列可查看個股。</p>
+    </div>
+    <div class="card">
+      <h2 id="sg-stat-h">回測成績</h2>
+      <p class="muted small" id="sg-stat-sub"></p>
+      <div class="tiles" id="sg-tiles"></div>
+      <h3 class="mt">各種賣出方式比較（★ 為推薦）</h3>
+      <div class="table-wrap"><table id="sg-stat"></table></div>
+      <div id="sg-notes"></div>
     </div>
   </section>
 </main>

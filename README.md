@@ -8,6 +8,7 @@
 - **個股查詢**：輸入代號或名稱，看收盤價、法人買賣超（張）、估算資金流入流出、融資融券、券資比；可加入自選
 - **估值**（個股頁）：本益比、近 3 年平均／最低／最高本益比、分析師預估 EPS 與前瞻本益比、便宜／合理／昂貴價
 - **排行**：法人／外資／投信買賣超、融資增減、券資比
+- **訊號股**：依回測條件（法人連買、近 5 日超跌、KD 超賣、RSI／週 K 低檔）篩出近 3 個交易日出現訊號的股票，分嚴格版／寬鬆版，並附回測勝率、獲利因子、平均持有天數、平均每筆報酬
 
 ## 架構
 
@@ -17,6 +18,14 @@ scripts/build.py   整理 → site/（不 commit，由 Actions 直接部署）
 web/               前端（純 HTML/CSS/JS，無外部套件）
 .github/workflows/update.yml  平日 21:47、23:17（台北）自動執行
 ```
+
+## 訊號股
+
+- `scripts/ohlc.py`：抓市值前 320 大上市＋前 160 大上櫃的開高低收與三大法人，存 `data/ohlc/YYYYMMDD.json`（每天排程補最近 3 天）。`data/raw` 沒有最高、最低價，上櫃也只有最新一日，所以另存一份。
+- `scripts/signals.py`：算 KD(9,3,3)、RSI(14)、週 K，輸出 `site/data/signals.json`；`build.py` 會自動呼叫。指標與回測用的 JS 版逐點比對過（`tests/test_signals.py`）。
+- `config/signal_stats.json`：回測成績（固定資料，不會隨每天更新）。條件或統計要改，改這個檔。
+- 第一次要回補歷史（約 100 個交易日，約 30 分鐘）：Actions → 「回補開高低收（訊號股用）」→ Run workflow；或修改 `data/ohlc_backfill.request` 後 push。資料不足 60 個交易日時，訊號股頁面會顯示「歷史資料累積中」。
+- 測試：`python tests/test_signals.py`、`python tests/test_ohlc.py`（需要 node）。
 
 ## 第一次設定
 

@@ -18,7 +18,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths: ["web/**", "scripts/build.py", "worker/**", "wrangler.toml"]
+    paths: ["web/**", "scripts/build.py", "scripts/signals.py", "config/signal_stats.json", "worker/**", "wrangler.toml"]
 
 permissions:
   contents: write
@@ -58,6 +58,11 @@ jobs:
         if: github.event_name != 'push'
         continue-on-error: true
         run: python scripts/shares.py
+
+      - name: 開高低收＋法人（訊號股用，補最近 3 天）
+        if: github.event_name != 'push'
+        continue-on-error: true
+        run: python scripts/ohlc.py --days 3
 
       - name: 分析師預估 EPS（每週）
         if: github.event_name != 'push'
