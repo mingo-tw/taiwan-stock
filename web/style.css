@@ -168,6 +168,6 @@ td.why { color: var(--muted); font-size: 12px; }
 .move-url { font-size: 18px; font-weight: 650; word-break: break-all; color: var(--accent); }
 .warn-text { color: var(--up); }
 .btn-primary { display: block; text-align: center; padding: 12px; border-radius: 10px; background: var(--accent); color: #fff !important; font-weight: 600; text-decoration: none; }
-.gate-box .btn-ghost { color: var(--text); background: var(--surface); font-weight: 400;
+.gate-box .btn-ghost { color: var(--text); background: var(--surface); font-weight: 400; border: 1px solid var(--border);
 }
 .btn-ghost { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; font-size: 14px; }
