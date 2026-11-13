@@ -14,5 +14,6 @@ database_name = "taiwan-stock-auth"
 database_id = "c448f513-aef0-4c79-b644-48749ab09bd5"
 
 # 台北時間平日 21:17 起每 30 分鐘到 23:47，再加 01:17 與隔天 07:17（UTC 表示）
+# 注意：Cloudflare 的星期 1 = 星期日，所以用英文 MON-FRI 最不會錯
 [triggers]
-crons = ["17,47 13-15 * * 1-5", "17 17,23 * * 1-5"]
+crons = ["17,47 13-15 * * MON-FRI", "17 17,23 * * MON-FRI"]
