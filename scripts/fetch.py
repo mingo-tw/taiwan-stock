@@ -158,11 +158,15 @@ def twse_index_and_quotes(ymd):
             iname, iclose = idx(f, "證券名稱"), idx(f, "收盤價")
             isg, idiff = idx(f, "漲跌(+/-)"), idx(f, "漲跌價差")
             ivol, iamt = idx(f, "成交股數"), idx(f, "成交金額")
+            iop, ihi, ilo = idx(f, "開盤價"), idx(f, "最高價"), idx(f, "最低價")
             for row in data:
                 code = str(row[ic]).strip()
                 diff = num(row[idiff]) if idiff is not None else None
                 s = sign_of(row[isg]) if isg is not None else 0
                 quotes[code] = {
+                    "open": num(row[iop]) if iop is not None else None,
+                    "high": num(row[ihi]) if ihi is not None else None,
+                    "low": num(row[ilo]) if ilo is not None else None,
                     "name": str(row[iname]).strip(),
                     "close": num(row[iclose]),
                     "chg": (diff * s) if (diff is not None) else None,
@@ -323,6 +327,8 @@ def tpex_latest(ymd):
                 out[code] = {"name": str(_pick(d, r"CompanyName", r"^Name$", "名稱") or "").strip(),
                              "close": close, "chg": num(_pick(d, r"^Change$", "漲跌")),
                              "vol": num(_pick(d, r"TradingShares", r"TradeVolume", "成交股數")),
+                             "open": num(_pick(d, r"^Open$", "開盤")), "high": num(_pick(d, r"^High$", "最高")),
+                             "low": num(_pick(d, r"^Low$", "最低")),
                              "mkt": "otc"}
         elif q:
             log(f"  TPEx quotes 日期不符或格式不同，keys={list(q[0].keys())[:12]}")
@@ -413,14 +419,16 @@ def fetch_day(ymd, with_tpex):
         # [名稱, 市場, 收盤, 漲跌, 成交股數, 外資, 投信, 自營, 三大法人合計, 融資餘額, 融資前日, 融券餘額, 融券前日]
         stocks[code] = [q["name"], "twse", q["close"], q["chg"], q["vol"],
                         i and i["foreign"], i and i["trust"], i and i["dealer"], i and i["total"],
-                        m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"]]
+                        m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"],
+                        q.get("open"), q.get("high"), q.get("low")]
 
     if with_tpex:
         for code, q in tpex_latest(ymd).items():
             i, m = q.get("inst"), q.get("margin")
             stocks[code] = [q["name"], "otc", q["close"], q["chg"], q["vol"],
                             i and i["foreign"], i and i["trust"], i and i["dealer"], i and i["total"],
-                            m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"]]
+                            m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"],
+                            q.get("open"), q.get("high"), q.get("low")]
 
     return {
         "date": f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}",
@@ -514,9 +522,11 @@ def main():
                     i, m = q.get("inst"), q.get("margin")
                     new = [q["name"], "otc", q["close"], q["chg"], q["vol"],
                            i and i["foreign"], i and i["trust"], i and i["dealer"], i and i["total"],
-                           m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"]]
+                           m and m["fin"], m and m["fin_prev"], m and m["short"], m and m["short_prev"],
+                           q.get("open"), q.get("high"), q.get("low")]
                     old = day["stocks"].get(code)
                     if old and old[1] == "otc":  # 這次沒抓到的欄位沿用舊值
+                        old = list(old) + [None] * (len(new) - len(old))
                         new = [n if n is not None else o for n, o in zip(new, old)]
                     day["stocks"][code] = new
                     if q.get("pe"):

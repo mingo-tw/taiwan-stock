@@ -8,7 +8,7 @@
   const svgEl = (tag, attrs = {}) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
 
   const state = { market: null, latest: null, stocks: [], stockMap: new Map(), cur: null,
-                  range: { ov: 60, in: 20, mg: 60, st: 60 } };
+                  range: { ov: 60, in: 20, mg: 60, st: 60, k: 60 } };
   const RANGES = [[20, "20日"], [60, "60日"], [120, "120日"], [0, "全部"]];
 
   // ---------- 格式 ----------
@@ -59,6 +59,7 @@
   const tickFmt = v => Math.abs(v) >= 1e4 ? nf(v / 1e4, Math.abs(v) >= 1e5 ? 0 : 1) + "萬" : nf(v, Math.abs(v % 1) > 1e-9 ? 1 : 0);
 
   function render(node, cfg) {
+    if (cfg.draw) return cfg.draw(node);
     const { labels, values, type, fmt } = cfg;
     node.replaceChildren();
     const pts = values.map((v, i) => ({ i, v })).filter(p => isNum(p.v));
@@ -174,7 +175,7 @@
       }));
     });
   }
-  const draw = key => ({ ov: drawOverview, in: drawInst, mg: drawMargin, st: drawStockCharts })[key]?.();
+  const draw = key => ({ ov: drawOverview, in: drawInst, mg: drawMargin, st: drawStockCharts, k: drawK })[key]?.();
 
   // ---------- 總覽 ----------
   const days = () => state.market?.days || [];
@@ -313,6 +314,7 @@
       { k: "券資比", v: isNum(ratio) ? nf(ratio, 2) + "%" : "—" },
     ]);
     drawValuation(S, L);
+    drawK();
     drawStockCharts();
     const c = v => ({ t: isNum(v) ? signed(lots(v)) : "—", cls: cls(v) });
     table($("#st-table"), ["日期", "收盤", "漲跌", "外資", "投信", "自營", "合計", "估算資金", "融資", "資增減", "融券", "券增減"],
@@ -320,6 +322,148 @@
         { t: isNum(r[7]) && isNum(r[1]) ? money(r[7] * r[1]) : "—", cls: cls(r[7]) },
         nf(r[8]), { t: signed(r[9]), cls: cls(r[9]) }, nf(r[10]), { t: signed(r[11]), cls: cls(r[11]) }] })));
     drawWatch();
+  }
+
+  // ---------- K 線・技術指標 ----------
+  // k: [日期, 開, 高, 低, 收, 成交張數]
+  function sma(a, n) { const o = []; let s = 0; a.forEach((v, i) => { s += v; if (i >= n) s -= a[i - n]; o.push(i >= n - 1 ? s / n : null); }); return o; }
+  function ema(a, n) { const o = [], k = 2 / (n + 1); let e = null; a.forEach((v, i) => { e = e === null ? v : v * k + e * (1 - k); o.push(i >= n - 1 ? e : null); }); return o; }
+  function rsi(c, n) {  // Wilder 平滑
+    const o = [null]; let g = 0, l = 0;
+    for (let i = 1; i < c.length; i++) {
+      const d = c[i] - c[i - 1], up = Math.max(d, 0), dn = Math.max(-d, 0);
+      if (i <= n) { g += up / n; l += dn / n; o.push(i === n ? (l === 0 ? 100 : 100 - 100 / (1 + g / l)) : null); }
+      else { g = (g * (n - 1) + up) / n; l = (l * (n - 1) + dn) / n; o.push(l === 0 ? 100 : 100 - 100 / (1 + g / l)); }
+    }
+    return o;
+  }
+  function indicators(k) {
+    const c = k.map(r => r[4]);
+    const e12 = ema(c, 12), e26 = ema(c, 26);
+    const dif = c.map((_, i) => e12[i] !== null && e26[i] !== null ? e12[i] - e26[i] : null);
+    const difv = dif.filter(v => v !== null), dea0 = ema(difv, 9), off = dif.length - difv.length;
+    const dea = dif.map((_, i) => i >= off ? dea0[i - off] : null);
+    return { ma5: sma(c, 5), ma20: sma(c, 20), ma60: sma(c, 60), dif, dea,
+             osc: dif.map((v, i) => v !== null && dea[i] !== null ? v - dea[i] : null), rsi6: rsi(c, 6), rsi12: rsi(c, 12) };
+  }
+
+  function drawK() {
+    const node = $("#kchart"), S = state.cur;
+    if (!S) return;
+    const k = (S.k || []).filter(r => r.slice(1, 5).every(isNum));
+    if (k.length < 2) {
+      node.replaceChildren(el("div", "nodata", "這檔股票還沒有開高低收資料，之後每天會自動累積。"));
+      $("#k-note").textContent = ""; charts.delete(node); return;
+    }
+    chart(node, { draw: n => renderK(n, k) });
+    const enough = k.length >= 35;
+    $("#k-note").textContent = `紅K 收盤 ≥ 開盤、綠K 收盤 < 開盤。均線 MA5／MA20／MA60；MACD(12,26,9)，柱狀為 DIF−DEA；RSI 6／12 日，70 以上偏熱、30 以下偏冷。`
+      + (enough ? "" : ` 目前只有 ${k.length} 天資料，MACD、長天期均線需要更多天數才會出現。`);
+  }
+
+  function renderK(node, K) {
+    node.replaceChildren();
+    const ind = indicators(K), n0 = state.range.k ? Math.max(0, K.length - state.range.k) : 0;
+    const k = K.slice(n0), I = {}; for (const key in ind) I[key] = ind[key].slice(n0);
+    const n = k.length, W = node.clientWidth || 340;
+    const m = { l: 48, r: 8 }, iw = W - m.l - m.r;
+    const P = [  // 各面板：標題列 16px＋圖
+      { key: "k", h: 210 }, { key: "v", h: 60 }, { key: "macd", h: 80 }, { key: "rsi", h: 70 }];
+    let y = 0; P.forEach(p => { p.top = y + 18; y = p.top + p.h + 8; }); const H = y + 14;
+    const X = i => m.l + (i + 0.5) * iw / n, bw = Math.max(1, Math.min(9, iw / n * 0.7));
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img" });
+    const add = (e, g = svg) => (g.appendChild(e), e);
+    const fin = v => v !== null && v !== undefined && isFinite(v);
+    const scale = (p, lo, hi, pad = 0.04) => { const d = (hi - lo) || Math.abs(hi) || 1; lo -= d * pad; hi += d * pad; p.lo = lo; p.hi = hi; p.Y = v => p.top + p.h - (v - lo) / (hi - lo) * p.h; };
+    const axis = (p, ticks, f) => ticks.forEach(t => {
+      add(svgEl("line", { class: "gl", x1: m.l, x2: W - m.r, y1: p.Y(t), y2: p.Y(t) }));
+      const tx = add(svgEl("text", { class: "ax", x: m.l - 5, y: p.Y(t) + 3.5, "text-anchor": "end" })); tx.textContent = f(t);
+    });
+    const line = (vals, cls, p) => {
+      let d = ""; vals.forEach((v, i) => { if (fin(v)) d += (d && fin(vals[i - 1]) ? "L" : "M") + X(i).toFixed(1) + "," + p.Y(v).toFixed(1); });
+      if (d) add(svgEl("path", { d, class: cls }));
+    };
+    const title = (p, t) => { const e = add(svgEl("text", { class: "ptitle", x: m.l, y: p.top - 6 })); e.textContent = t; return e; };
+    const pfmt = v => nf(v, v >= 1000 ? 0 : v >= 100 ? 1 : 2);
+
+    // 1) K 線＋均線
+    const pk = P[0];
+    const lows = k.map(r => r[3]).concat(I.ma5, I.ma20, I.ma60).filter(fin), highs = k.map(r => r[2]).concat(I.ma5, I.ma20, I.ma60).filter(fin);
+    scale(pk, Math.min(...lows), Math.max(...highs));
+    axis(pk, niceTicks(pk.lo, pk.hi, 4).filter(t => t >= pk.lo && t <= pk.hi), pfmt);
+    const gk = add(svgEl("g"));
+    k.forEach((r, i) => {
+      const [, o, h, l, c] = r, cls = c >= o ? "up" : "dn", x = X(i);
+      add(svgEl("line", { class: "wick " + cls, x1: x, x2: x, y1: pk.Y(h), y2: pk.Y(l) }), gk);
+      const y1 = pk.Y(Math.max(o, c)), y2 = pk.Y(Math.min(o, c));
+      add(svgEl("rect", { class: cls, x: x - bw / 2, y: y1, width: bw, height: Math.max(1, y2 - y1), "data-i": i }), gk);
+    });
+    line(I.ma5, "l1", pk); line(I.ma20, "l2", pk); line(I.ma60, "l3", pk);
+    const tK = title(pk, "");
+
+    // 2) 成交量
+    const pv = P[1], vmax = Math.max(...k.map(r => r[5] || 0)) || 1;
+    pv.lo = 0; pv.hi = vmax; pv.Y = v => pv.top + pv.h - v / vmax * pv.h;
+    add(svgEl("line", { class: "gl", x1: m.l, x2: W - m.r, y1: pv.Y(0), y2: pv.Y(0) }));
+    const vt = add(svgEl("text", { class: "ax", x: m.l - 5, y: pv.top + 8, "text-anchor": "end" })); vt.textContent = tickFmt(vmax);
+    k.forEach((r, i) => { if (fin(r[5])) add(svgEl("rect", { class: r[4] >= r[1] ? "up" : "dn", x: X(i) - bw / 2, y: pv.Y(r[5]), width: bw, height: Math.max(0.5, pv.Y(0) - pv.Y(r[5])) })); });
+    const tV = title(pv, "");
+
+    // 3) MACD
+    const pm = P[2], mv = I.dif.concat(I.dea, I.osc).filter(fin);
+    const tM = title(pm, "");
+    if (mv.length) {
+      const a = Math.max(...mv.map(Math.abs)) || 1; scale(pm, -a, a, 0.05);
+      add(svgEl("line", { class: "zero", x1: m.l, x2: W - m.r, y1: pm.Y(0), y2: pm.Y(0) }));
+      const t2 = add(svgEl("text", { class: "ax", x: m.l - 5, y: pm.top + 8, "text-anchor": "end" })); t2.textContent = nf(a, a >= 10 ? 0 : 2);
+      I.osc.forEach((v, i) => { if (fin(v)) { const y0 = pm.Y(0), y1 = pm.Y(v); add(svgEl("rect", { class: v >= 0 ? "up" : "dn", x: X(i) - bw / 2, y: Math.min(y0, y1), width: bw, height: Math.max(0.5, Math.abs(y1 - y0)) })); } });
+      line(I.dif, "l1", pm); line(I.dea, "l2", pm);
+    } else { pm.Y = () => pm.top + pm.h / 2; const t = add(svgEl("text", { class: "ax", x: m.l + iw / 2, y: pm.top + pm.h / 2, "text-anchor": "middle" })); t.textContent = "資料天數不足"; }
+
+    // 4) RSI
+    const pr = P[3]; pr.lo = 0; pr.hi = 100; pr.Y = v => pr.top + pr.h - v / 100 * pr.h;
+    [30, 70].forEach(t => { add(svgEl("line", { class: "ref", x1: m.l, x2: W - m.r, y1: pr.Y(t), y2: pr.Y(t) })); const e = add(svgEl("text", { class: "ax", x: m.l - 5, y: pr.Y(t) + 3.5, "text-anchor": "end" })); e.textContent = t; });
+    line(I.rsi6, "l1", pr); line(I.rsi12, "l2", pr);
+    const tR = title(pr, "");
+
+    // X 軸日期
+    const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 70))));
+    for (let i = n - 1; i >= 0; i -= every) {
+      if (i !== n - 1 && X(n - 1) - X(i) < 62) continue;  // 太靠近最右邊的日期就略過，避免重疊
+      const t = add(svgEl("text", { class: "ax", x: X(i), y: H - 2, "text-anchor": i === n - 1 ? "end" : "middle" })); t.textContent = mmdd(k[i][0]);
+    }
+
+    // 面板標題＝圖例＋當天數值（色塊對應線條顏色）
+    const legend = (tnode, name, items) => {
+      tnode.replaceChildren(); const ts = (txt, cls) => { const e = svgEl("tspan", cls ? { class: cls } : {}); e.textContent = txt; tnode.appendChild(e); };
+      ts(name + "  ");
+      items.forEach(([lab, val, sw]) => { if (sw) ts("■ ", sw); ts(`${lab} ${val}   `, "lg"); });
+    };
+    const f2 = v => fin(v) ? nf(v, 2) : "—", fp = v => fin(v) ? pfmt(v) : "—";
+    function setLegend(i) {
+      const r = k[i];
+      legend(tK, `K線 ${mmdd(r[0])}`, [["MA5", fp(I.ma5[i]), "sw1"], ["MA20", fp(I.ma20[i]), "sw2"], ["MA60", fp(I.ma60[i]), "sw3"]]);
+      legend(tV, "成交量", [["", (fin(r[5]) ? nf(r[5]) : "—") + " 張"]]);
+      legend(tM, "MACD", [["DIF", f2(I.dif[i]), "sw1"], ["DEA", f2(I.dea[i]), "sw2"], ["柱", f2(I.osc[i])]]);
+      legend(tR, "RSI", [["6日", fin(I.rsi6[i]) ? nf(I.rsi6[i], 1) : "—", "sw1"], ["12日", fin(I.rsi12[i]) ? nf(I.rsi12[i], 1) : "—", "sw2"]]);
+    }
+    setLegend(n - 1);
+
+    // 十字線＋提示
+    const xh = add(svgEl("line", { class: "xh", y1: P[0].top, y2: P[3].top + P[3].h, visibility: "hidden" }));
+    const hit = add(svgEl("rect", { x: m.l, y: 0, width: iw, height: H, fill: "transparent" }));
+    const move = ev => {
+      const b = svg.getBoundingClientRect(), px = (ev.clientX - b.left) * (W / b.width);
+      const i = Math.max(0, Math.min(n - 1, Math.floor((px - m.l) / (iw / n))));
+      xh.setAttribute("x1", X(i)); xh.setAttribute("x2", X(i)); xh.setAttribute("visibility", "visible");
+      setLegend(i);
+      const r = k[i], prev = i > 0 ? k[i - 1][4] : (n0 > 0 ? K[n0 - 1][4] : null), chg = isNum(prev) ? (r[4] / prev - 1) * 100 : null;
+      showTip(ev.clientX, ev.clientY, [{ text: r[0] }, { text: `開 ${fp(r[1])}　高 ${fp(r[2])}` }, { text: `低 ${fp(r[3])}　收 ${fp(r[4])}` },
+        { text: `漲跌 ${isNum(chg) ? signed(chg, 2) + "%" : "—"}`, cls: cls(chg) }, { text: `量 ${fin(r[5]) ? nf(r[5]) : "—"} 張` }]);
+    };
+    const leave = () => { xh.setAttribute("visibility", "hidden"); setLegend(n - 1); hideTip(); };
+    hit.addEventListener("pointermove", move); hit.addEventListener("pointerdown", move); hit.addEventListener("pointerleave", leave);
+    node.appendChild(svg);
   }
 
   // ---------- 估值 ----------

@@ -18,6 +18,7 @@ WEB = ROOT / "web"
 OUT = ROOT / "site"
 KEEP_DAYS_MARKET = 250
 KEEP_DAYS_STOCK = 120
+KEEP_DAYS_K = 250
 OTC_CODE = re.compile(r"^(\d{4}|00\d{2,4}[A-Z]?)$")
 
 # 快照中個股陣列的欄位位置
@@ -127,11 +128,32 @@ def main():
                 d["date"], r[CLOSE], r[CHG], r[VOL], r[FOR], r[TRU], r[DEA], r[TOT],
                 r[FIN], diff(r[FIN], r[FINP]), r[SHO], diff(r[SHO], r[SHOP]),
             ])
+    # ---- K 線：[日期, 開, 高, 低, 收, 成交張數] ----
+    # 來源 1：data/ohlc（市值前 320 上市＋前 160 上櫃，歷史較長）；來源 2：每日快照的開高低（之後所有股票都有）
+    kline = {}
+    for f in sorted((ROOT / "data" / "ohlc").glob("2*.json")):
+        try:
+            od = json.loads(f.read_text("utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        for grp in ("t", "o"):
+            for code, r in (od.get(grp) or {}).items():
+                if all(x is not None for x in r[:4]):
+                    kline.setdefault(code, {})[od["date"]] = [od["date"], r[0], r[1], r[2], r[3], r[4]]
+    for d in days:
+        for code, r in d.get("stocks", {}).items():
+            if len(r) > 15 and all(x is not None for x in (r[13], r[14], r[15], r[CLOSE])):
+                kd = kline.setdefault(code, {})
+                if d["date"] not in kd:
+                    kd[d["date"]] = [d["date"], r[13], r[14], r[15], r[CLOSE],
+                                     round(r[VOL] / 1000) if r[VOL] is not None else None]
+
     for code, rows in hist.items():
         if not code.isalnum():
             continue
+        k = [kline[code][dd] for dd in sorted(kline.get(code, {}))][-KEEP_DAYS_K:]
         dump(data / "s" / f"{code}.json",
-             {"c": code, "n": names[code][0], "m": names[code][1], "rows": rows, "v": valuation(code)})
+             {"c": code, "n": names[code][0], "m": names[code][1], "rows": rows, "v": valuation(code), "k": k})
     dump(data / "stocks.json", sorted([[c, n, m] for c, (n, m) in names.items() if c.isalnum()]))
 
     # ---- 估值排行：上市市值前 200、上櫃市值前 100 ----

@@ -191,3 +191,21 @@ td.sell { text-align: left; }
 .disc { z-index: 200; background: rgba(0,0,0,.55); }
 .disc .gate-box { max-width: 420px; line-height: 1.6; }
 .disc .gate-box p { font-size: 15px; }
+
+/* K 線 */
+.kchart { width: 100%; position: relative; touch-action: pan-y; }
+.kchart svg { display: block; width: 100%; overflow: visible; }
+.kchart text.ax { fill: var(--muted); font-size: 10.5px; }
+.kchart .gl { stroke: var(--grid); stroke-width: 1; }
+.kchart .ref { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }
+.kchart .zero { stroke: var(--muted); stroke-width: 1; }
+.kchart .up { fill: var(--up); stroke: var(--up); }
+.kchart .dn { fill: var(--down); stroke: var(--down); }
+.kchart .wick { stroke-width: 1; }
+.kchart .l1, .kchart .l2, .kchart .l3 { fill: none; stroke-width: 1.5; stroke-linejoin: round; }
+.kchart .l1 { stroke: var(--s1); } .kchart .l2 { stroke: var(--s2); } .kchart .l3 { stroke: var(--s3); }
+.kchart .ptitle { fill: var(--text-2); font-size: 11.5px; font-weight: 600; }
+.kchart .lg { fill: var(--text-2); font-size: 11px; }
+.kchart .sw1 { fill: var(--s1); } .kchart .sw2 { fill: var(--s2); } .kchart .sw3 { fill: var(--s3); }
+.kchart .xh { stroke: var(--muted); stroke-dasharray: 3 3; }
+.kchart .dim { opacity: .45; }
