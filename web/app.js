@@ -692,6 +692,12 @@
       return d;
     } catch { return ""; }
   })();
+  // 網址帶 ?apply=1（從舊網址公告連過來）：只用一次，用完就從網址拿掉，避免登入後又跳回申請畫面
+  function takeApplyParam() {
+    if (!/[?&]apply=1/.test(location.search)) return false;
+    try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* */ }
+    return true;
+  }
   function showGate(msg, reason) {
     stopHeartbeat();
     $("#gate").hidden = false; $("#gate-msg").textContent = msg || "";
@@ -702,7 +708,8 @@
     // 有記住帳號、而且不是自己按登出／被別台接手／被管理員登出 → 自動登入
     const auto = saved && !manual && !["takeover", "forced", "disabled", "expired", "deleted"].includes(reason);
     const p = new Promise(resolve => { auth.resolve = resolve; });
-    if (/[?&]apply=1/.test(location.search)) { showApply(true); return p; }  // 從舊網址公告連過來：直接開申請
+    if (takeApplyParam()) { showApply(true); return p; }  // 從舊網址公告連過來：直接開申請（只開一次）
+    showApply(false);
     if (auto) setTimeout(() => $("#gate-btn").click(), 0);
     else setTimeout(() => (saved ? $("#gate-btn") : $("#gate-name")).focus(), 50);
     return p;
@@ -805,7 +812,9 @@
     });
     await checkAuth();
     await loadPos();
-    if (/[?&]apply=1/.test(location.search) && !$("#apply-link").hidden) { $("#gate").hidden = false; showApply(true); }
+    // 開放模式下從舊網址連過來：打開申請畫面（登入模式已在 showGate 處理；已登入就不再打擾）
+    if (auth.mode !== "key" && takeApplyParam() && !$("#apply-link").hidden) { $("#gate").hidden = false; showApply(true); }
+    else takeApplyParam();
     segs();
     $("#search").addEventListener("submit", e => { e.preventDefault(); openStock(resolve($("#q").value)); $("#q").blur(); });
     $("#st-star").addEventListener("click", () => {
