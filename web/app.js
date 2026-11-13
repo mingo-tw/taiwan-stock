@@ -745,12 +745,12 @@
     e.preventDefault();
     const btn = $("#ap-btn"); btn.disabled = true; $("#ap-msg").className = "gate-msg"; $("#ap-msg").textContent = "";
     if (!/^\d{4}$/.test($("#ap-pin").value)) { btn.disabled = false; $("#ap-msg").textContent = "密碼請設定 4 位數字"; return; }
-    const r = await api("api/apply", { name: $("#ap-name").value, pin: $("#ap-pin").value, note: $("#ap-note").value });
+    const r = await api("api/apply", { name: $("#ap-name").value, pin: $("#ap-pin").value });
     btn.disabled = false;
     if (r.ok) {
       $("#ap-msg").className = "gate-msg ok";
       $("#ap-msg").textContent = `已送出申請！管理員核准後，就能用「${$("#ap-name").value.trim()}」和你設的密碼登入。`;
-      $("#ap-pin").value = ""; $("#ap-note").value = "";
+      $("#ap-pin").value = "";
     } else $("#ap-msg").textContent = r.error || "送出失敗";
   }
   function startHeartbeat() { stopHeartbeat(); auth.timer = setInterval(beat, 60000); }

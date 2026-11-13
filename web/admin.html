@@ -196,7 +196,7 @@
     const pend = S.apps.filter(a => a.status === "pending").length;
     $("#app-count").textContent = pend ? `${pend} 筆待審核` : "沒有待審核的申請";
     const ST = { pending: pill("待審核", "idle"), approved: null, rejected: pill("已拒絕", "off") };
-    table($("#apps"), ["申請時間", "名稱", "聯絡方式／備註", "裝置", "IP", "狀態", "操作"],
+    table($("#apps"), ["申請時間", "名稱", "裝置", "IP", "狀態", "操作"],
       S.apps.map(a => {
         const acts = el("div", "acts");
         if (a.status === "pending") {
@@ -208,7 +208,7 @@
         }
         acts.appendChild(btn("刪除", async () => { if (confirmBox(`刪除「${a.name}」的申請紀錄？`)) { await call(`/applications/${a.id}`, { action: "delete" }); load(); } }, "danger"));
         const st = a.status === "approved" ? pill("已核准", "on") : ST[a.status];
-        return [fmt(a.created_at), a.name, a.note || "—", a.device, `${a.ip || ""}${a.country ? " (" + a.country + ")" : ""}`, st, acts];
+        return [fmt(a.created_at), a.name, a.device, `${a.ip || ""}${a.country ? " (" + a.country + ")" : ""}`, st, acts];
       }));
   }
 
