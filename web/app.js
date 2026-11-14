@@ -624,7 +624,7 @@
       const wn = $("#sg-warn") || (() => { const w = el("p", "note"); w.id = "sg-warn"; w.hidden = true; $("#sg-list-h").after(w); return w; })();
       const perDay = {}; rows.forEach(x => x.sig.forEach(d => { perDay[d] = (perDay[d] || 0) + 1; }));
       const lastD = S.window[S.window.length - 1], nLast = perDay[lastD] || 0;
-      wn.hidden = !(state.sver === "loose" && rows.length > 0 && nLast < 5);
+      wn.hidden = !(state.sver === "loose" && rows.length > 0 && nLast >= 1 && nLast < 5);
       wn.textContent = `提醒：最近一天只有 ${nLast} 檔符合寬鬆版，屬個股單獨超跌；回測中這類訊號表現偏弱（樣本小，僅供觀察），建議少買或觀望。部位請控制在總資金上限內。`;
       const when = x => (x.first === x.last ? mmdd(x.first) : `${mmdd(x.first)}～${mmdd(x.last)}`) + (x.today ? "" : "（今日已不符）");
       const sell = x => {
