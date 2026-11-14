@@ -620,6 +620,12 @@
       $("#sg-list-h").textContent = `近 ${S.window.length} 個交易日（${mmdd(S.window[0])}～${mmdd(S.window[S.window.length - 1])}）出現訊號的股票・${rows.length} 檔`;
       msg.hidden = rows.length > 0;
       msg.textContent = "近 4 個交易日沒有股票符合這個版本的條件。";
+      // 寬鬆版：某天只有個股單獨符合（當天符合檔數 < 5）時，回測表現偏弱（樣本小，僅供觀察）
+      const wn = $("#sg-warn") || (() => { const w = el("p", "note"); w.id = "sg-warn"; w.hidden = true; $("#sg-list-h").after(w); return w; })();
+      const perDay = {}; rows.forEach(x => x.sig.forEach(d => { perDay[d] = (perDay[d] || 0) + 1; }));
+      const lastD = S.window[S.window.length - 1], nLast = perDay[lastD] || 0;
+      wn.hidden = !(state.sver === "loose" && rows.length > 0 && nLast < 5);
+      wn.textContent = `提醒：最近一天只有 ${nLast} 檔符合寬鬆版，屬個股單獨超跌；回測中這類訊號表現偏弱（樣本小，僅供觀察），建議少買或觀望。部位請控制在總資金上限內。`;
       const when = x => (x.first === x.last ? mmdd(x.first) : `${mmdd(x.first)}～${mmdd(x.last)}`) + (x.today ? "" : "（今日已不符）");
       const sell = x => {
         if (!x.entry) return { t: "明天開盤買進", cls: "why" };
